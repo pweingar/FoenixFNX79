@@ -1,0 +1,254 @@
+/*
+ * ps2.c
+ *
+ *  Created on: Jun 10, 2025
+ *      Author: pjw
+ */
+
+#include <ps2.$$$>
+#include "main.h"
+
+/**
+ * Constants
+ */
+
+enum ps2_state_e {
+	ps2_idle = 0,
+	ps2_sending,
+	ps2_receiving,
+	ps2_inhibit,
+};
+
+
+/**
+ * Module variables
+ */
+
+static bool clk_asserted = false;
+static enum ps2_state_e ps2_state = ps2_idle;
+static short bit_count = 0;
+static uint16_t shift_register = 0;
+static uint8_t rcv_bit_count = 0;
+static uint8_t data_out = 0;
+static uint8_t data_in = 0;
+static bool has_data_in = false;
+
+/**
+ * Code
+ */
+
+/**
+ * Routine to handle a tick of the PS2 timer
+ *
+ * This routine will be triggered twice per bit:
+ * - First time, it will assert PS2_CLK_OUT with the bit to send (start/data/stop)
+ * - Second time, it will release the PS2_CLK_OUT and advance the state
+ *
+ */
+void ps2_send_tick() {
+	if (ps2_is_busy()) {
+		// If we are sending something...
+
+		if (clk_asserted) {
+			// midway through the bit... de-assert clock
+			HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_CLK_OUT_Pin, GPIO_PIN_SET);
+			clk_asserted = false;
+
+		} else {
+			// Start of the bit... assert the clock and set the data from the shift register
+
+			if (bit_count == 0) {
+				// We shifted out our last bit, finish processing by releasing the bus
+				HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_DATA_OUT_Pin | PS2_CLK_OUT_Pin, GPIO_PIN_SET);
+
+				// TODO: unpack data if we were receiving
+
+				ps2_state = ps2_idle;
+
+			} else {
+				// Shift the bits in the shift register out to the bus in least significant bit first order
+
+				if (shift_register & 0x01) {
+					// Assert the CLK and DATA lines
+					HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_DATA_OUT_Pin, GPIO_PIN_SET);
+					HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_CLK_OUT_Pin, GPIO_PIN_RESET);
+
+				} else {
+					// Assert the CLK and release the DATA line
+					HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_DATA_OUT_Pin, GPIO_PIN_RESET);
+					HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_CLK_OUT_Pin, GPIO_PIN_RESET);
+				}
+
+				// Mark that the clock is asserted
+				clk_asserted = true;
+
+				// Shift the data in the shift register
+				shift_register = shift_register >> 1;
+				bit_count--;
+			}
+		}
+	}
+}
+
+/**
+ * Routine to handle a tick of the PS2 timer
+ *
+ * This routine will be triggered twice per bit:
+ * - First time, it will assert PS2_CLK_OUT with the bit to send (start/data/stop)
+ * - Second time, it will release the PS2_CLK_OUT and advance the state
+ *
+ */
+void ps2_receive_tick() {
+	if (ps2_is_busy()) {
+		// If we are receiving something...
+
+		if (clk_asserted) {
+			// midway through the bit... de-assert clock
+			HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_CLK_OUT_Pin, GPIO_PIN_SET);
+			clk_asserted = false;
+
+		} else {
+			// Start of the bit... assert the clock and set the data from the shift register
+
+			if (rcv_bit_count == 12) {
+				// We shifted out our last bit, finish processing by releasing the bus
+				HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_DATA_OUT_Pin | PS2_CLK_OUT_Pin, GPIO_PIN_SET);
+
+				data_in = ((shift_register >> 1) & 0x00ff);
+				has_data_in = true;
+				ps2_state = ps2_idle;
+
+			} else {
+				// Shift the bits in the shift register out to the bus in least significant bit first order
+
+				if (HAL_GPIO_ReadPin(PS2_DATA_IN_GPIO_Port, PS2_DATA_IN_Pin) == GPIO_PIN_SET) {
+					shift_register = shift_register | (1 << rcv_bit_count);
+				}
+
+				// Mark that the clock is asserted
+				clk_asserted = true;
+
+				rcv_bit_count++;
+			}
+		}
+	}
+}
+
+/**
+ * Routine to handle a tick of the PS2 timer
+ *
+ * This routine will toggle the clock if we are receiving or sending data
+ * and will watch for activity from the host.
+ *
+ * 1. If IDLE, check to see if the clock is held low and move to INHIBIT
+ * 2. If INHIBIT, check to see if data goes low and move to RECEIVE
+ * 3. If INHIBIT, check to see if clock and data are high and move to IDLE
+ * 4. If SEND, handle send tick
+ * 5. If RECEIVE, handle receive tick
+ */
+void ps2_tick() {
+	switch(ps2_state) {
+		case ps2_sending:
+			ps2_send_tick();
+			break;
+
+		case ps2_receiving:
+			ps2_receive_tick();
+			break;
+
+		case ps2_inhibit:
+			if (HAL_GPIO_ReadPin(PS2_CLK_IN_GPIO_Port, PS2_CLK_IN_Pin) == GPIO_PIN_SET) {
+				if (HAL_GPIO_ReadPin(PS2_DATA_IN_GPIO_Port, PS2_DATA_IN_Pin) == GPIO_PIN_RESET) {
+					rcv_bit_count = 0;
+					shift_register = 0;
+					data_in = 0;
+					has_data_in = false;
+					ps2_state = ps2_receiving;
+
+				} else {
+					ps2_state = ps2_idle;
+				}
+			}
+			break;
+
+		default:
+			if (HAL_GPIO_ReadPin(PS2_CLK_IN_GPIO_Port, PS2_CLK_IN_Pin) == GPIO_PIN_RESET) {
+				ps2_state = ps2_inhibit;
+			}
+			break;
+	}
+}
+
+
+/**
+ * Check to see if the PS/2 bus is busy either sending or receiving
+ *
+ * @retval true if the PS/2 bus is currently busy, false otherwise
+ */
+bool ps2_is_busy() {
+	return ps2_state != ps2_idle;
+}
+
+static bool even_bits(uint8_t data) {
+	bool parity = true;
+	for (int i = 0; i < 8; i++) {
+		if (data & 0x01) {
+			parity = !parity;
+		}
+		data = data >> 1;
+	}
+
+	return parity;
+}
+
+/**
+ * Send a byte on the PS2 channel -- block until the byte is sent
+ *
+ * @param data the byte to send
+ */
+void ps2_send(uint8_t data) {
+	// Wait to see if the PS/2 bus is busy
+	while (ps2_is_busy()) ;
+
+	clk_asserted = false;
+	data_out = data;
+	bit_count = 11;
+
+	if (even_bits(data)) {
+		// Add START bit, STOP bit, and PARITY bit
+		shift_register = (data << 1) | 0x0600;
+	} else {
+		// Add START bit and STOP bit
+		shift_register = data << 1 | 0x0400;
+	}
+
+	ps2_state = ps2_sending;
+}
+
+/**
+ * Check to see if we have received data
+ *
+ * @retval true if there is data that has been received, false otherwise
+ */
+bool ps2_has_received_data() {
+	return has_data_in;
+}
+
+/**
+ * Return data received
+ */
+uint8_t ps2_receive() {
+	has_data_in = false;
+	return data_in;
+}
+
+/**
+ * Initialize the PS/2 port to a standard setting
+ */
+void ps2_init() {
+	ps2_state = ps2_idle;
+	rcv_bit_count = 0;
+	bit_count = 0;
+
+	HAL_GPIO_WritePin(PS2_CLK_OUT_GPIO_Port, PS2_CLK_OUT_Pin | PS2_DATA_OUT_Pin, GPIO_PIN_SET);
+}

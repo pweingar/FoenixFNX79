@@ -17,6 +17,7 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+#include "ps2dev.h"
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -69,6 +70,34 @@ const uint8_t LED_FLOPPY = 0;
 // const uint8_t LED_HDD = 0;
 
 //
+// PS/2 command and response codes
+//
+
+const uint8_t PS2_CMD_SET_LED = 0xed;
+const uint8_t PS2_CMD_ECHO = 0xee;
+const uint8_t PS2_CMD_SET_SC = 0xf0;
+const uint8_t PS2_CMD_IDENT = 0xf2;
+const uint8_t PS2_CMD_SET_REPEAT = 0xf3;
+const uint8_t PS2_CMD_ENABLE = 0xf4;
+const uint8_t PS2_CMD_DISABLE = 0xf5;
+const uint8_t PS2_CMD_DEFAULTS = 0xf6;
+const uint8_t PS2_CMD_RESEND = 0xfe;
+const uint8_t PS2_CMD_RESET = 0xff;
+
+const uint8_t PS2_REPLY_ACK = 0xfa;
+const uint8_t PS2_REPLY_RESEND = 0xfe;
+
+
+/**
+ * Bit codes for the various status lights
+ * There is no NUMLOCK or SCROLL key on this keyboard, so those bits are ignored.
+ */
+const uint8_t PS2_STAT_CAPS = 0x02;
+const uint8_t PS2_STAT_POWER = 0x10;
+const uint8_t PS2_STAT_MEDIA1 = 0x20;
+const uint8_t PS2_STAT_MEDIA2 = 0x40;
+
+//
 // Keyboard matrix constants
 //
 
@@ -76,7 +105,7 @@ const uint8_t LED_FLOPPY = 0;
 #define NUM_ROWS 		6
 #define NUM_COLUMNS		16
 
-const uint8_t HEARTBEAT_CNT = 100;	// Number of counts of the heart beat before we toggle the LED
+const uint8_t HEARTBEAT_CNT = 10;	// Number of counts of the heart beat before we toggle the LED
 const uint8_t DEBOUNCE_CNT = 2;		// Number of times through a loop to verify the switch isn't bouncing
 
 const uint8_t KEY_PRESSED = 0x80;
@@ -114,27 +143,48 @@ const uint16_t col_pin[] = {
 };
 
 // Mapping of matrix position to Foenix scan code
-// TODO: Convert to sets 1, 2, and 3
-const uint8_t scan_code[] = {
+
+// Scan Code Set 1 -- NOTE: scancode > 0x90 indicates a code requiring an escape (0xf1 => 0xe0 0x71)
+const uint8_t scan_code_1[] = {
 		// Row 1: ESC, F1 - F8, HELP
-		0x01, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x00, 0x00, 0x40, 0x41, 0x42, 0x00, 0x54, 0x55, 0x00, 0x56,
+		0x01, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x00, 0x00, 0x40, 0x41, 0x42, 0x00, 0x43, 0x44, 0x00, 0x57,
 
 		// Row 2: "`", 1 - 0, -, =, BS, DEL
-		0x29, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x2B, 0x0E, 0x65,
+		0x29, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x2B, 0x0E, 0xd3,
 
 		// Row 3: TAB, Q, W, E, R, T, Y, U, I, O, P, [, ]
 		0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x00, 0x00, 0x00,
 
 		// Row 4: --, CAPS, A, S, D, F, G, H, J, K, L, ;, '
-		0x00, 0x3A, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x59, 0x1C, 0x00,
+		0x00, 0x3A, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x1C, 0x00,
 
 		// Row 5: SHIFT, Z, X, C, V, B, N, M, ",", ".", "/", SHIFT, UP
-		0x2A, 0x5A, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x68, 0x00, 0x00,
+		0x2A, 0x5A, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0xc8, 0x00, 0x00,
 
 		// Row 6: CTRL, ALT, FN, META, SPACE, ALT, CTRL, "\", LEFT. DOWN, RIGHT
-		0x1D, 0x38, 0x5B, 0x00, 0x00, 0x00, 0x39, 0x00, 0x00, 0x00, 0x5D, 0x5C, 0x5E, 0x69, 0x6A, 0x6B
+		0x1D, 0x38, 0xdB, 0x00, 0x00, 0x00, 0x39, 0x00, 0x00, 0x00, 0xdc, 0xb8, 0x9d, 0xcb, 0xd0, 0xcd
 };
 
+// Scan Code Set 2 -- NOTE: scancode > 0x90 indicates a code requiring an escape (0xf1 => 0xe0 0x71)
+const uint8_t scan_code_2[] = {
+		// Row 1: ESC, F1 - F8, HELP
+		0x76, 0x05, 0x06, 0x04, 0x0c, 0x03, 0x00, 0x00, 0x0b, 0x83, 0x0a, 0x00, 0x01, 0x09, 0x00, 0x78,
+
+		// Row 2: "`", 1 - 0, -, =, \, BS, DEL
+		0x0e, 0x16, 0x1e, 0x26, 0x25, 0x2e, 0x36, 0x3d, 0x3e, 0x46, 0x45, 0x4e, 0x55, 0x5d, 0x66, 0xf1,
+
+		// Row 3: TAB, Q, W, E, R, T, Y, U, I, O, P, [, ]
+		0x0d, 0x15, 0x1d, 0x24, 0x2d, 0x2c, 0x35, 0x3c, 0x43, 0x44, 0x4d, 0x54, 0x5b, 0x00, 0x00, 0x00,
+
+		// Row 4: --, CAPS, A, S, D, F, G, H, J, K, L, ;, ', blank, return
+		0x00, 0x58, 0x1c, 0x1b, 0x23, 0x2b, 0x34, 0x33, 0x3b, 0x42, 0x4b, 0x4c, 0x52, 0x53, 0x5a, 0x00,
+
+		// Row 5: SHIFT, blank, Z, X, C, V, B, N, M, ",", ".", "/", SHIFT, UP
+		0x12, 0x13, 0x1a, 0x22, 0x21, 0x2a, 0x32, 0x31, 0x3a, 0x41, 0x49, 0x4a, 0x59, 0xf5, 0x00, 0x00,
+
+		// Row 6: CTRL, ALT, FN, META, SPACE, ALT, CTRL, "\", LEFT. DOWN, RIGHT
+		0x14, 0x11, 0x9f, 0x00, 0x00, 0x00, 0x29, 0x00, 0x00, 0x00, 0xa7, 0x91, 0x94, 0xeb, 0xf2, 0xf4
+};
 
 /* USER CODE END PD */
 
@@ -145,6 +195,9 @@ const uint8_t scan_code[] = {
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim16;
+TIM_HandleTypeDef htim17;
 DMA_HandleTypeDef hdma_tim1_ch2;
 
 /* USER CODE BEGIN PV */
@@ -152,8 +205,7 @@ DMA_HandleTypeDef hdma_tim1_ch2;
 PixelRGB_t pixel[NUM_PIXELS] = {0};
 uint32_t dmaBuffer[DMA_BUFF_SIZE] = {0};
 uint8_t dma_state = 0;
-
-ring_buffer_t ps2_output;				// Ring buffer to hold bytes to send to the PS/2 port
+bool ws2812_needs_update = false;
 
 volatile short is_transmitting = 0;		// Flag to indicate if the controller is currently sending a packet
 volatile short key_init_delay;			// Counter for the typematic delay on the last pressed key
@@ -166,6 +218,8 @@ uint8_t last_pressed;					// The scan code of the last (and currently) pressed k
 
 uint8_t is_scan_disabled = 0;			// Scanning is disabled if this is TRUE
 
+short current_set = 2;					// Scan code set to use: 1 or 2 (default)
+
 // The status of the keys:
 // 0b1xxxxxxx - Pressed
 // 0bx1xxxxxx - Don't send a MAKE scan code if pressed
@@ -175,7 +229,11 @@ uint8_t p_key_state[NUM_KEYS];
 
 uint8_t led0_state = 0;					// State of LED0 (0 = off, 1 == on)
 
+long millisecond_count = 0;
+
 int	heartbeat_count = 0;				// Count of loops for the heart beat LED
+
+uint8_t modifier_leds = 0;
 
 /* USER CODE END PV */
 
@@ -184,6 +242,9 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM17_Init(void);
+static void MX_TIM16_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -194,6 +255,34 @@ static void MX_TIM1_Init(void);
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
 	HAL_TIM_PWM_Stop_DMA(htim, TIM_CHANNEL_2);
 	dma_state = DMA_STATE_RESTING;
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if (htim == &htim3) {
+		// ps2_tick();
+		// HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
+
+	} else if (htim == &htim16) {
+		// Increase the millisecond counter
+		millisecond_count++;
+	}
+}
+
+/**
+ * Wait for us microseconds
+ *
+ * @param us the number of microseconds to wait
+ */
+void delayMicroseconds(uint16_t us) {
+	__HAL_TIM_SET_COUNTER(&htim17,0);			// set the counter value a 0
+	while (__HAL_TIM_GET_COUNTER(&htim17) < us);	// wait for the counter to reach the us input in the parameter
+}
+
+/**
+ * Return the number of milliseconds since startup
+ */
+long millis() {
+	return millisecond_count;
 }
 
 //
@@ -229,6 +318,20 @@ void ws2812_set_color(unsigned short led, uint8_t red, uint8_t green, uint8_t bl
 		pixel[led].r = red;
 		pixel[led].g = green;
 		pixel[led].b = blue;
+		ws2812_needs_update = true;
+	}
+}
+
+/**
+ * Set whether or not an LED is on
+ *
+ * @param led the index of the LED to update (0 -- 11)
+ * @param is_on TRUE if the LED should be on, FALSE if it should be off
+ */
+void ws2812_set_state(short led, bool is_on) {
+	if (led < NUM_PIXELS) {
+		pixel[led].is_on = is_on;
+		ws2812_needs_update = true;
 	}
 }
 
@@ -258,38 +361,32 @@ uint32_t * ws2812_buffer_byte(uint32_t * buffer, uint8_t data) {
  * Update the physical LEDs with the set colors
  */
 void ws2812_update() {
-	// Update the DMA buffer
-	uint32_t * buffer = dmaBuffer;
+	if (ws2812_needs_update) {
+		// Update the DMA buffer
+		uint32_t * buffer = dmaBuffer;
 
-	for (int led = 0; led < NUM_PIXELS; led++) {
-		if (pixel[led].is_on) {
-			buffer = ws2812_buffer_byte(buffer, pixel[led].g);
-			buffer = ws2812_buffer_byte(buffer, pixel[led].r);
-			buffer = ws2812_buffer_byte(buffer, pixel[led].b);
-		} else {
-			buffer = ws2812_buffer_byte(buffer, 0);
-			buffer = ws2812_buffer_byte(buffer, 0);
-			buffer = ws2812_buffer_byte(buffer, 0);
+		for (int led = 0; led < NUM_PIXELS; led++) {
+			if (pixel[led].is_on) {
+				buffer = ws2812_buffer_byte(buffer, pixel[led].g);
+				buffer = ws2812_buffer_byte(buffer, pixel[led].r);
+				buffer = ws2812_buffer_byte(buffer, pixel[led].b);
+			} else {
+				buffer = ws2812_buffer_byte(buffer, 0);
+				buffer = ws2812_buffer_byte(buffer, 0);
+				buffer = ws2812_buffer_byte(buffer, 0);
+			}
 		}
+		*buffer++ = 0;
+
+		// Start the DMA
+		dma_state = DMA_STATE_SENDING;
+		HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, dmaBuffer, DMA_BUFF_SIZE);
+
+		// Wait until the DMA is finished
+		while (dma_state == DMA_STATE_SENDING) ;
+
+		ws2812_needs_update = false;
 	}
-	*buffer++ = 0;
-
-	// Start the DMA
-	dma_state = DMA_STATE_SENDING;
-	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, dmaBuffer, DMA_BUFF_SIZE);
-
-	// Wait until the DMA is finished
-	while (dma_state == DMA_STATE_SENDING) ;
-}
-
-/**
- * Set whether or not an LED is on
- *
- * @param led the index of the LED to update (0 -- 11)
- * @param is_on TRUE if the LED should be on, FALSE if it should be off
- */
-void ws2812_set_state(short led, bool is_on) {
-	pixel[led].is_on = is_on;
 }
 
 /**
@@ -316,6 +413,25 @@ void ws2812_init() {
 		dmaBuffer[i] = 0;
 	}
 }
+
+//
+// PS/2 Command code
+//
+
+/**
+ * Set the status LEDs in response to the set LED command (0xed)
+ *
+ * @param status the bitfield for all the status LEDs
+ */
+void ps2_set_leds(uint8_t status) {
+	ws2812_set_state(LED_CAPS, ((status & PS2_STAT_CAPS) != 0));
+	ws2812_set_state(LED_POWER, ((status & PS2_STAT_POWER) != 0));
+	ws2812_set_state(LED_FLOPPY, ((status & PS2_STAT_MEDIA1) != 0));
+}
+
+/**
+ * Keyboard matrix code
+ */
 
 /**
  * De-assert all the row pins
@@ -379,8 +495,6 @@ void key_to_led(uint8_t scancode) {
 	ws2812_update();
 }
 
-// TODO: Insert key scanning and processing code here
-
 /**
  * Send a key scan code to the host
  *
@@ -388,11 +502,40 @@ void key_to_led(uint8_t scancode) {
  * @param is_pressed TRUE (non-zero) if the key is pressed (send a MAKE scan code), 0 if not (send a BREAK scan code)
  */
 void send_key(short key_position, short is_pressed) {
-	if (is_pressed) {
-		key_to_led(scan_code[key_position]);
-		// queue_for_xmit(scan_code[key_position]);
-	} else {
-		// queue_for_xmit(0x80 | scan_code[key_position]);
+	// Get the base scan code given the key position and the current scan code set
+	uint8_t code = 0;
+	switch (ps2_keyboard_get_set()) {
+	case 1:
+		code = scan_code_1[key_position];
+		break;
+
+	case 2:
+		code = scan_code_2[key_position];
+		break;
+
+	default:
+		break;
+	}
+
+	// If we got an actual scan code...
+	if (code) {
+		if (is_pressed) {
+			// If it's pressed, send a press scan code or a special press scan code sequence
+			// NOTE: special keys (requiring a sequence) are marked by base scan codes > 0x90
+			if (code > 0x90) {
+				ps2_keyboard_press_special(code & 0x7f);
+			} else {
+				ps2_keyboard_press(code);
+			}
+
+		} else {
+			// If it's released, send a release scan code or a special release scan code sequence
+			if (code > 0x90) {
+				ps2_keyboard_release_special(code & 0x7f);
+			} else {
+				ps2_keyboard_release(code);
+			}
+		}
 	}
 }
 
@@ -542,7 +685,7 @@ void kbd_process() {
  * Set the keyboard to its initial state
  */
 void kbd_init() {
-	rb_init(&ps2_output);		// Initialize the byte FIFO going to the host computer
+	// rb_init(&ps2_output);		// Initialize the byte FIFO going to the host computer
 
 	clr_rows();
 
@@ -596,7 +739,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
-	short k = 0;
+	uint8_t old_modifier_leds;
 
   /* USER CODE END 1 */
 
@@ -620,15 +763,22 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_TIM1_Init();
+  MX_TIM3_Init();
+  MX_TIM17_Init();
+  MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
 
   kbd_init();
   ws2812_init();
 
-  key_to_led(0xaa);
-  ws2812_update();
+//  ps2_init();
 
-  // key_to_led(0xaa);
+  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Base_Start_IT(&htim16);	// millisecond tick for millis() counter
+  HAL_TIM_Base_Start(&htim17);		// microsecond timer
+
+  ps2_init(GPIOA, PS2_CLK_IN_Pin, PS2_DATA_IN_Pin, GPIOA, PS2_CLK_OUT_Pin, PS2_DATA_OUT_Pin);
+  ps2_keyboard_init();
 
   /* USER CODE END 2 */
 
@@ -640,9 +790,31 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  kbd_process();
-	  heart_beat();
 	  HAL_Delay(10);
+
+	  // Check for commands from the host...
+	  old_modifier_leds = modifier_leds;
+	  ps2_keyboard_handle(&modifier_leds);
+	  if (modifier_leds != old_modifier_leds) {
+		  // If the command was issued to change the LEDs, update the RGB leds
+		  ps2_set_leds(modifier_leds);
+	  }
+
+	  // Check for changes to key presses in the key matrix
+	  // Issue messages to the host for any changes
+	  kbd_process();
+
+//	  if (ps2_has_received_data()) {
+//		  uint8_t data = ps2_receive();
+//		  key_to_led(data);
+//	  }
+
+	  // Send the changes to the RGB LEDs out to the WS2812s
+	  ws2812_update();
+
+	  // Flash the status LEDs to indicate that this main loop is still running
+	  heart_beat();
+
   }
   /* USER CODE END 3 */
 }
@@ -761,6 +933,115 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_CENTERALIGNED3;
+  htim3.Init.Period = 2000 - 1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM16 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM16_Init(void)
+{
+
+  /* USER CODE BEGIN TIM16_Init 0 */
+
+  /* USER CODE END TIM16_Init 0 */
+
+  /* USER CODE BEGIN TIM16_Init 1 */
+
+  /* USER CODE END TIM16_Init 1 */
+  htim16.Instance = TIM16;
+  htim16.Init.Prescaler = 48 - 1;
+  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim16.Init.Period = 1000 - 1;
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM16_Init 2 */
+
+  /* USER CODE END TIM16_Init 2 */
+
+}
+
+/**
+  * @brief TIM17 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM17_Init(void)
+{
+
+  /* USER CODE BEGIN TIM17_Init 0 */
+
+  /* USER CODE END TIM17_Init 0 */
+
+  /* USER CODE BEGIN TIM17_Init 1 */
+
+  /* USER CODE END TIM17_Init 1 */
+  htim17.Instance = TIM17;
+  htim17.Init.Prescaler = 47;
+  htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim17.Init.Period = 65535;
+  htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim17.Init.RepetitionCounter = 0;
+  htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim17) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM17_Init 2 */
+
+  /* USER CODE END TIM17_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -790,15 +1071,15 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, ROW1_Pin|ROW2_Pin|ROW3_Pin|ROW4_Pin
                           |ROW5_Pin|ROW6_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, STAT_LED1_Pin|STAT_LED0_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, PS2_CLK_OUT_Pin|PS2_DATA_OUT_Pin|STAT_LED1_Pin|STAT_LED0_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : ROW1_Pin ROW2_Pin ROW3_Pin ROW4_Pin
                            ROW5_Pin ROW6_Pin */
@@ -808,6 +1089,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PS2_CLK_IN_Pin PS2_DATA_IN_Pin */
+  GPIO_InitStruct.Pin = PS2_CLK_IN_Pin|PS2_DATA_IN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PS2_CLK_OUT_Pin PS2_DATA_OUT_Pin */
+  GPIO_InitStruct.Pin = PS2_CLK_OUT_Pin|PS2_DATA_OUT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : COL1_Pin COL2_Pin COL3_Pin COL11_Pin
                            COL12_Pin COL13_Pin COL14_Pin COL15_Pin

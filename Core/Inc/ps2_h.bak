@@ -1,0 +1,54 @@
+/*
+ * ps2.h
+ *
+ *  Created on: Jun 10, 2025
+ *      Author: pjw
+ */
+
+#ifndef INC_PS2_____
+#define INC_PS2_____
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * Routine to handle a tick of the PS2 timer
+ *
+ * This routine will toggle the clock if we are receiving or sending data
+ * and will watch for activity from the host.
+ *
+ */
+extern void ps2_tick();
+
+/**
+ * Check to see if the PS/2 bus is busy either sending or receiving
+ *
+ * @retval true if the PS/2 bus is currently busy, false otherwise
+ */
+extern bool ps2_is_busy();
+
+/**
+ * Send a byte on the PS2 channel -- block until the byte is sent
+ *
+ * @param data the byte to send
+ */
+extern void ps2_send(uint8_t data);
+
+/**
+ * Check to see if we have received data
+ *
+ * @retval true if there is data that has been received, false otherwise
+ */
+extern bool ps2_has_received_data();
+
+/**
+ * Return data received
+ */
+extern uint8_t ps2_receive();
+
+/**
+ * Initialize the PS/2 port to a standard setting
+ */
+extern void ps2_init();
+
+#endif /* INC_PS2_____ */

@@ -56,6 +56,25 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
+/**
+ * Wait for us microseconds
+ *
+ * @param us the number of microseconds to wait
+ */
+extern void delayMicroseconds(uint16_t us);
+
+/**
+ * Set the status LEDs in response to the set LED command (0xed)
+ *
+ * @param status the bitfield for all the status LEDs
+ */
+extern void ps2_set_leds(uint8_t status);
+
+/**
+ * Return the number of milliseconds since startup
+ */
+extern long millis();
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -67,6 +86,14 @@ void Error_Handler(void);
 #define ROW3_GPIO_Port GPIOC
 #define ROW4_Pin GPIO_PIN_3
 #define ROW4_GPIO_Port GPIOC
+#define PS2_CLK_IN_Pin GPIO_PIN_0
+#define PS2_CLK_IN_GPIO_Port GPIOA
+#define PS2_CLK_OUT_Pin GPIO_PIN_1
+#define PS2_CLK_OUT_GPIO_Port GPIOA
+#define PS2_DATA_IN_Pin GPIO_PIN_2
+#define PS2_DATA_IN_GPIO_Port GPIOA
+#define PS2_DATA_OUT_Pin GPIO_PIN_3
+#define PS2_DATA_OUT_GPIO_Port GPIOA
 #define ROW5_Pin GPIO_PIN_4
 #define ROW5_GPIO_Port GPIOC
 #define ROW6_Pin GPIO_PIN_5
