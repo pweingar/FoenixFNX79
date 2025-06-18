@@ -52,6 +52,49 @@
 #define ECANCEL		-3
 
 /**
+ * Initial delay, in milliseconds, indexed by the two bits from the typematic PS/2 command
+ */
+const short ps2_delay_ms[] = {250, 500, 750, 1000};
+
+/**
+ * Repeat delay, in milliseconds, indexed by the 5 bits from the typematic PS/2 command
+ */
+const short ps2_repeat_ms[] = {
+	33,
+	37,
+	42,
+	46,
+	48,
+	54,
+	58,
+	63,
+	67,
+	75,
+	83,
+	92,
+	100,
+	109,
+	116,
+	125,
+	133,
+	149,
+	167,
+	182,
+	200,
+	217,
+	233,
+	250,
+	270,
+	303,
+	333,
+	370,
+	400,
+	435,
+	476,
+	500
+};
+
+/**
  * Module variables
  */
 
@@ -316,9 +359,20 @@ void ps2_ack() {
 }
 
 int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
-	uint8_t val;
+	uint8_t val = 0;
+	uint8_t led_index = 0;
+	uint8_t red = 0;
+	uint8_t green = 0;
+	uint8_t blue = 0;
+	short delay_ms = 0;
+	short rate_ms = 0;
+
 	switch (cmd) {
 		case 0xFF: //reset
+			kbd_set_typematic(500, 10);
+			ps2_keyboard_scan_code_set(2);
+			kbd_set_enable(true);
+			*leds_ = 0;
 			ps2_ack();
 			//the while loop lets us wait for the host to be ready
 			while (ps2_write(0xFA) != 0) delay(1); //send ACK
@@ -331,23 +385,37 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 
 		case 0xF6: //set defaults
 			//enter stream mode
+			kbd_set_typematic(500, 10);
 			ps2_keyboard_scan_code_set(2);
+			kbd_set_enable(true);
+			*leds_ = 0;
 			ps2_ack();
 			break;
 
 		case 0xF5: //disable data reporting
 			//FM
+			kbd_set_enable(false);
 			ps2_ack();
 			break;
 
 		case 0xF4: //enable data reporting
 			//FM
+			kbd_set_enable(true);
 			ps2_ack();
 			break;
 
 		case 0xF3: //set typematic rate
 			ps2_ack();
-			if (!ps2_read(&val)) ps2_ack(); //do nothing with the rate
+			if (!ps2_read(&val)) {
+				// Extract the delay and repeat codes from the parameter byte
+				// And convert them to delays in milliseconds
+				delay_ms = ps2_delay_ms[(val >> 5) & 0x03];
+				rate_ms = ps2_repeat_ms[val & 0x1f];
+
+				// Set the typematic values and ACK
+				kbd_set_typematic(delay_ms, rate_ms);
+				ps2_ack();
+			}
 			break;
 
 		case 0xF2: //get device id
@@ -378,6 +446,45 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			}
 			break;
 
+		case 0xE0:
+			// FNXKBD-79 only: set RGB LED color
+			// Parameters: LED#, RED, GREEN, BLUE
+			ps2_ack();
+			if (!ps2_read(&led_index)) {
+				ps2_ack();
+				if (!ps2_read(&red)) {
+					ps2_ack();
+					if (!ps2_read(&green)) {
+						ps2_ack();
+						if (!ps2_read(&blue)) {
+							ws2812_set_color(led_index, red, green, blue);
+							ps2_ack();
+						}
+					}
+				}
+			}
+			break;
+
+		case 0xE1:
+			// FNXKBD-79 only: turn RGB LED on
+			// Parameters: LED#
+			ps2_ack();
+			if(!ps2_read(&led_index)) {
+				ws2812_set_state(led_index, true);
+				ps2_ack();
+			}
+			break;
+
+		case 0xE2:
+			// FNXKBD-79 only: turn RGB LED off
+			// Parameters: LED#
+			ps2_ack();
+			if(!ps2_read(&led_index)) {
+				ws2812_set_state(led_index, false);
+				ps2_ack();
+			}
+			break;
+
 		case 0xEE: //echo
 			//ack();
 			delayMicroseconds(BYTE_INTERVAL_MICROS);
@@ -388,9 +495,9 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 		case 0xED: //set/reset LEDs
 			//ack();
 			while (ps2_write(0xFA) != 0) delay(1);
-				if(!ps2_read(&leds)) {
-					while (ps2_write(0xFA) != 0) delay(1);
-				}
+			if(!ps2_read(&leds)) {
+				ps2_write(0xFA);
+			}
 #ifdef _PS2DBG
 			_PS2DBG.print("LEDs: ");
 			_PS2DBG.println(leds, HEX);
@@ -406,7 +513,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 int ps2_keyboard_handle(uint8_t *leds_) {
 	uint8_t c;  //char stores data received from computer for KBD
 	if(ps2_available()) {
-		if (!ps2_read(&c)) return ps2_keyboard_reply(c, &leds);
+		if (!ps2_read(&c)) return ps2_keyboard_reply(c, leds_);
 	}
 	return 0;
 }

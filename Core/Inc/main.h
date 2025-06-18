@@ -32,6 +32,9 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <stdbool.h>
+#include <stdint.h>
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -74,6 +77,39 @@ extern void ps2_set_leds(uint8_t status);
  * Return the number of milliseconds since startup
  */
 extern long millis();
+
+/**
+ * Set whether or not keyboard scanning is enabled
+ *
+ * @param enable true if the keyboard scanning should be enabled, false otherwise
+ */
+extern void kbd_set_enable(bool enable);
+
+/**
+ * Set the initial delay and delay rate in milliseconds for the key repeat (typematic) function
+ *
+ * @param delay_ms the initial delay in milliseconds
+ * @param rate_ms the repeat rate delay in milliseconds
+ */
+extern void kbd_set_typematic(short delay_ms, short rate_ms);
+
+/**
+ * Set whether or not an LED is on
+ *
+ * @param led the index of the LED to update (0 -- 11)
+ * @param is_on TRUE if the LED should be on, FALSE if it should be off
+ */
+extern void ws2812_set_state(short led, bool is_on);
+
+/**
+ * Set the color of a given LED in the records, but do not actually update the LEDs
+ *
+ * @param led the index of the LED to update (0 -- 11)
+ * @param red the red component 0 -- 255
+ * @param green the green component 0 -- 255
+ * @param blue the blue component 0 -- 255
+ */
+extern void ws2812_set_color(unsigned short led, uint8_t red, uint8_t green, uint8_t blue);
 
 /* USER CODE END EFP */
 

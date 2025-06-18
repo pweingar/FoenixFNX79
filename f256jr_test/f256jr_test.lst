@@ -1,0 +1,296 @@
+
+; 64tass Turbo Assembler Macro V1.59.3120 listing file
+; 64tass --s-record -o f256jr_test.s37 --list f256jr_test.lst f256jr_test.asm
+; Tue Jun 17 18:34:30 2025
+
+;Offset	;Hex		;Monitor	;Source
+
+;******  Processing input file: f256jr_test.asm
+
+=$0000					MMU_MEM_CTRL = $0000
+=$0001					MMU_IO_CTRL = $0001
+=$d640					PS2_CTRL = $d640
+=$02					PS2_CTRL_KBD_WR = $02
+=$04					PS2_CTRL_MS_WR = $04
+=$10					PS2_CTRL_KBD_CLR = $10
+=$20					PS2_CTRL_MS_CLR = $20
+=$d641					PS2_OUT = $d641
+=$d642					PS2_KBD_IN = $d642
+=$d643					PS2_MS_IN = $d643
+=$d644					PS2_STAT = $d644
+=$80					PS2_STAT_KBD_ACK = $80
+=$40					PS2_STAT_KBD_NAK = $40
+=$20					PS2_STAT_MS_ACK = $20
+=$10					PS2_STAT_MS_NAK = $10
+=$02					PS2_STAT_MS_EMPTY = $02
+=$01					PS2_STAT_KB_EMPTY = $01
+=$c000					TXT_CHAR_MATRIX = $c000     ; Text matrix
+=$c000					TXT_COLOR_MATRIX = $c000    ; Color matrix
+=$f0					TXT_COLOR = $f0
+>fffc	00 20				vreset      .word <>start
+.2000	78		sei		start       sei
+.2001	38		sec		            sec
+.2002	fb		xce		            xce
+.2003	c2 30		rep #$30	            rep #$30
+.2005	9c 4f 22	stz $224f	            stz leds
+.2008	9c 50 22	stz $2250	            stz is_release
+.200b	20 8c 21	jsr $218c	            jsr clrscr
+.200e	a9 3e		lda #$3e	            lda #'>'
+.2010	20 1a 21	jsr $211a	            jsr pr
+.2013	a9 20		lda #$20	            lda #' '
+.2015	20 1a 21	jsr $211a	            jsr pr
+.2018	20 fd 20	jsr $20fd	loop        jsr get_sc
+.201b	c9 00		cmp #$00	            cmp #0
+.201d	f0 f9		beq $2018	            beq loop
+.201f	c9 f0		cmp #$f0	            cmp #$f0
+.2021	d0 0f		bne $2032	            bne _not_prefix
+.2023	a9 01		lda #$01	            lda #1
+.2025	8d 50 22	sta $2250	            sta is_release
+.2028	20 fd 20	jsr $20fd	_wait2      jsr get_sc
+.202b	c9 00		cmp #$00	            cmp #0
+.202d	f0 f9		beq $2028	            beq _wait2
+.202f	8d 4e 22	sta $224e	            sta scancode
+.2032					_not_prefix
+.2032	c9 58		cmp #$58	            cmp #$58
+.2034	d0 08		bne $203e	            bne _not_caps
+.2036	ad 50 22	lda $2250	            lda is_release
+.2039	d0 03		bne $203e	            bne _not_caps
+.203b	20 b7 20	jsr $20b7	            jsr caps_tog
+.203e	c9 16		cmp #$16	_not_caps   cmp #$16            ; '1'
+.2040	d0 07		bne $2049	            bne _not_1
+.2042	a9 01		lda #$01	            lda #1
+.2044	20 1b 22	jsr $221b	            jsr led_on
+.2047	80 4e		bra $2097	            bra _process
+.2049	c9 1e		cmp #$1e	_not_1      cmp #$1e            ; '2'
+.204b	d0 07		bne $2054	            bne _not_2
+.204d	a9 01		lda #$01	            lda #1
+.204f	20 26 22	jsr $2226	            jsr led_off
+.2052	80 43		bra $2097	            bra _process
+.2054	c9 05		cmp #$05	_not_2      cmp #$05            ; 'F1'
+.2056	d0 12		bne $206a	            bne _not_f1
+.2058	9c 53 22	stz $2253	            stz blue            ; Set LED to red
+.205b	9c 52 22	stz $2252	            stz green
+.205e	a9 ff		lda #$ff	            lda #255
+.2060	8d 51 22	sta $2251	            sta red
+.2063	a9 03		lda #$03	            lda #3
+.2065	20 31 22	jsr $2231	            jsr led_rgb
+.2068	80 2d		bra $2097	            bra _process
+.206a	c9 06		cmp #$06	_not_f1     cmp #$06            ; 'F2'
+.206c	d0 12		bne $2080	            bne _not_f2
+.206e	9c 53 22	stz $2253	            stz blue            ; Set LED to green
+.2071	a9 ff		lda #$ff	            lda #255
+.2073	8d 52 22	sta $2252	            sta green
+.2076	9c 51 22	stz $2251	            stz red
+.2079	a9 03		lda #$03	            lda #3
+.207b	20 31 22	jsr $2231	            jsr led_rgb
+.207e	80 17		bra $2097	            bra _process
+.2080	c9 04		cmp #$04	_not_f2     cmp #$04            ; 'F3'
+.2082	d0 12		bne $2096	            bne _not_f3
+.2084	a9 ff		lda #$ff	            lda #255            ; Set LED to blue
+.2086	8d 53 22	sta $2253	            sta blue
+.2089	9c 52 22	stz $2252	            stz green
+.208c	9c 51 22	stz $2251	            stz red
+.208f	a9 03		lda #$03	            lda #3
+.2091	20 31 22	jsr $2231	            jsr led_rgb
+.2094	80 01		bra $2097	            bra _process
+.2096	ea		nop		_not_f3     nop
+.2097	ad 50 22	lda $2250	_process    lda is_release
+.209a	f0 0f		beq $20ab	            beq _skip_f0
+.209c	a9 46		lda #$46	            lda #'F'
+.209e	20 1a 21	jsr $211a	            jsr pr
+.20a1	a9 30		lda #$30	            lda #'0'
+.20a3	20 1a 21	jsr $211a	            jsr pr
+.20a6	a9 20		lda #$20	            lda #' '
+.20a8	20 1a 21	jsr $211a	            jsr pr
+.20ab	ad 4e 22	lda $224e	_skip_f0    lda scancode
+.20ae	20 4b 21	jsr $214b	            jsr pr_sc
+.20b1	9c 50 22	stz $2250	            stz is_release
+.20b4	4c 18 20	jmp $2018	            jmp loop
+.20b7					caps_tog
+.20b7	ad 4f 22	lda $224f	            lda leds
+.20ba	49 04		eor #$04	            eor #$04
+.20bc	8d 4f 22	sta $224f	            sta leds
+.20bf	a9 ed		lda #$ed	            lda #$ed
+.20c1	20 ea 20	jsr $20ea	            jsr kbd_send
+.20c4	ad 4f 22	lda $224f	            lda leds
+.20c7	20 ea 20	jsr $20ea	            jsr kbd_send
+.20ca	ad 4f 22	lda $224f	            lda leds
+.20cd	f0 0e		beq $20dd	            beq _nocaps
+.20cf	a2 00		ldx #$00	            ldx #0
+.20d1	a9 5d		lda #$5d	            lda #']'
+.20d3	20 1a 21	jsr $211a	            jsr pr
+.20d6	a9 20		lda #$20	            lda #' '
+.20d8	20 1a 21	jsr $211a	            jsr pr
+.20db	80 0c		bra $20e9	            bra _done
+.20dd	a2 00		ldx #$00	_nocaps     ldx #0
+.20df	a9 3e		lda #$3e	            lda #'>'
+.20e1	20 1a 21	jsr $211a	            jsr pr
+.20e4	a9 20		lda #$20	            lda #' '
+.20e6	20 1a 21	jsr $211a	            jsr pr
+.20e9	60		rts		_done       rts
+.20ea					kbd_send
+.20ea	8d 41 d6	sta $d641	            sta PS2_OUT
+.20ed	a9 02		lda #$02	            lda #PS2_CTRL_KBD_WR
+.20ef	8d 40 d6	sta $d640	            sta PS2_CTRL
+.20f2	9c 40 d6	stz $d640	            stz PS2_CTRL
+.20f5	20 fd 20	jsr $20fd	_wait       jsr get_sc
+.20f8	c9 00		cmp #$00	            cmp #0
+.20fa	f0 f9		beq $20f5	            beq _wait
+.20fc	60		rts		_done       rts
+.20fd					get_sc
+.20fd	5a		phy		            phy
+.20fe	a0 64		ldy #$64	            ldy #100
+.2100	64 01		stz $01		            stz MMU_IO_CTRL
+.2102	ad 44 d6	lda $d644	_wait       lda PS2_STAT
+.2105	29 01		and #$01	            and #PS2_STAT_KB_EMPTY
+.2107	c9 01		cmp #$01	            cmp #PS2_STAT_KB_EMPTY
+.2109	d0 07		bne $2112	            bne _ready
+.210b	88		dey		            dey
+.210c	d0 f4		bne $2102	            bne _wait
+.210e	a9 00		lda #$00	            lda #0
+.2110	80 06		bra $2118	            bra _done
+.2112	ad 42 d6	lda $d642	_ready      lda PS2_KBD_IN
+.2115	8d 4e 22	sta $224e	            sta scancode
+.2118	7a		ply		_done       ply
+.2119	60		rts		            rts
+.211a					pr
+.211a	48		pha		            pha
+.211b	a9 02		lda #$02	            lda #$02
+.211d	85 01		sta $01		            sta MMU_IO_CTRL
+.211f	68		pla		            pla
+.2120	9d 00 c0	sta $c000,x	            sta TXT_CHAR_MATRIX,x
+.2123	a9 03		lda #$03	            lda #$03
+.2125	85 01		sta $01		            sta MMU_IO_CTRL
+.2127	a9 f0		lda #$f0	            lda #TXT_COLOR
+.2129	9d 00 c0	sta $c000,x	            sta TXT_COLOR_MATRIX,x
+.212c	e8		inx		            inx
+.212d	60		rts		            rts
+.212e					pr_hex
+.212e	48		pha		            pha
+.212f	29 0f		and #$0f	            and #$0f
+.2131	a8		tay		            tay
+.2132	b9 3a 21	lda $213a,y	            lda hex_digits,y
+.2135	20 1a 21	jsr $211a	            jsr pr
+.2138	68		pla		            pla
+.2139	60		rts		            rts
+>213a	30 31 32 33 34 35 36 37		hex_digits  .null "0123456789ABCDEF"
+>2142	38 39 41 42 43 44 45 46 00
+.214b					pr_sc
+.214b	48		pha		            pha
+.214c	4a		lsr a		            lsr a
+.214d	4a		lsr a		            lsr a
+.214e	4a		lsr a		            lsr a
+.214f	4a		lsr a		            lsr a
+.2150	20 2e 21	jsr $212e	            jsr pr_hex
+.2153	68		pla		            pla
+.2154	20 2e 21	jsr $212e	            jsr pr_hex
+.2157	a9 20		lda #$20	            lda #' '
+.2159	20 1a 21	jsr $211a	            jsr pr
+.215c	a9 20		lda #$20	            lda #' '
+.215e	20 1a 21	jsr $211a	            jsr pr
+.2161	a9 20		lda #$20	            lda #' '
+.2163	20 1a 21	jsr $211a	            jsr pr
+.2166	a9 20		lda #$20	            lda #' '
+.2168	20 1a 21	jsr $211a	            jsr pr
+.216b	a9 20		lda #$20	            lda #' '
+.216d	20 1a 21	jsr $211a	            jsr pr
+.2170	a9 20		lda #$20	            lda #' '
+.2172	20 1a 21	jsr $211a	            jsr pr
+.2175	a9 20		lda #$20	            lda #' '
+.2177	20 1a 21	jsr $211a	            jsr pr
+.217a	a9 20		lda #$20	            lda #' '
+.217c	20 1a 21	jsr $211a	            jsr pr
+.217f	a9 20		lda #$20	            lda #' '
+.2181	20 1a 21	jsr $211a	            jsr pr
+.2184	a9 20		lda #$20	            lda #' '
+.2186	20 1a 21	jsr $211a	            jsr pr
+.2189	a2 02		ldx #$02	            ldx #2
+.218b	60		rts		            rts
+.218c					clrscr
+.218c	a2 00		ldx #$00	            ldx #0
+.218e	a9 02		lda #$02	_loop       lda #$02
+.2190	85 01		sta $01		            sta MMU_IO_CTRL
+.2192	a9 20		lda #$20	            lda #' '
+.2194	9d 00 c0	sta $c000,x	            sta TXT_CHAR_MATRIX,x
+.2197	9d 00 c1	sta $c100,x	            sta TXT_CHAR_MATRIX+$100,x
+.219a	9d 00 c2	sta $c200,x	            sta TXT_CHAR_MATRIX+$200,x
+.219d	9d 00 c3	sta $c300,x	            sta TXT_CHAR_MATRIX+$300,x
+.21a0	9d 00 c4	sta $c400,x	            sta TXT_CHAR_MATRIX+$400,x
+.21a3	9d 00 c5	sta $c500,x	            sta TXT_CHAR_MATRIX+$500,x
+.21a6	9d 00 c6	sta $c600,x	            sta TXT_CHAR_MATRIX+$600,x
+.21a9	9d 00 c7	sta $c700,x	            sta TXT_CHAR_MATRIX+$700,x
+.21ac	9d 00 c8	sta $c800,x	            sta TXT_CHAR_MATRIX+$800,x
+.21af	9d 00 c9	sta $c900,x	            sta TXT_CHAR_MATRIX+$900,x
+.21b2	9d 00 ca	sta $ca00,x	            sta TXT_CHAR_MATRIX+$a00,x
+.21b5	9d 00 cb	sta $cb00,x	            sta TXT_CHAR_MATRIX+$b00,x
+.21b8	9d 00 cc	sta $cc00,x	            sta TXT_CHAR_MATRIX+$c00,x
+.21bb	9d 00 cd	sta $cd00,x	            sta TXT_CHAR_MATRIX+$d00,x
+.21be	9d 00 ce	sta $ce00,x	            sta TXT_CHAR_MATRIX+$e00,x
+.21c1	9d 00 cf	sta $cf00,x	            sta TXT_CHAR_MATRIX+$f00,x
+.21c4	9d 00 d0	sta $d000,x	            sta TXT_CHAR_MATRIX+$1000,x
+.21c7	9d 00 d1	sta $d100,x	            sta TXT_CHAR_MATRIX+$1100,x
+.21ca	9d 00 d2	sta $d200,x	            sta TXT_CHAR_MATRIX+$1200,x
+.21cd	9d 00 d3	sta $d300,x	            sta TXT_CHAR_MATRIX+$1300,x
+.21d0	a9 03		lda #$03	            lda #$03
+.21d2	85 01		sta $01		            sta MMU_IO_CTRL
+.21d4	a9 f0		lda #$f0	            lda #TXT_COLOR
+.21d6	9d 00 c0	sta $c000,x	            sta TXT_COLOR_MATRIX,x
+.21d9	9d 00 c1	sta $c100,x	            sta TXT_COLOR_MATRIX+$100,x
+.21dc	9d 00 c2	sta $c200,x	            sta TXT_COLOR_MATRIX+$200,x
+.21df	9d 00 c3	sta $c300,x	            sta TXT_COLOR_MATRIX+$300,x
+.21e2	9d 00 c4	sta $c400,x	            sta TXT_COLOR_MATRIX+$400,x
+.21e5	9d 00 c5	sta $c500,x	            sta TXT_COLOR_MATRIX+$500,x
+.21e8	9d 00 c6	sta $c600,x	            sta TXT_COLOR_MATRIX+$600,x
+.21eb	9d 00 c7	sta $c700,x	            sta TXT_COLOR_MATRIX+$700,x
+.21ee	9d 00 c8	sta $c800,x	            sta TXT_COLOR_MATRIX+$800,x
+.21f1	9d 00 c9	sta $c900,x	            sta TXT_COLOR_MATRIX+$900,x
+.21f4	9d 00 ca	sta $ca00,x	            sta TXT_COLOR_MATRIX+$a00,x
+.21f7	9d 00 cb	sta $cb00,x	            sta TXT_COLOR_MATRIX+$b00,x
+.21fa	9d 00 cc	sta $cc00,x	            sta TXT_COLOR_MATRIX+$c00,x
+.21fd	9d 00 cd	sta $cd00,x	            sta TXT_COLOR_MATRIX+$d00,x
+.2200	9d 00 ce	sta $ce00,x	            sta TXT_COLOR_MATRIX+$e00,x
+.2203	9d 00 cf	sta $cf00,x	            sta TXT_COLOR_MATRIX+$f00,x
+.2206	9d 00 d0	sta $d000,x	            sta TXT_COLOR_MATRIX+$1000,x
+.2209	9d 00 d1	sta $d100,x	            sta TXT_COLOR_MATRIX+$1100,x
+.220c	9d 00 d2	sta $d200,x	            sta TXT_COLOR_MATRIX+$1200,x
+.220f	9d 00 d3	sta $d300,x	            sta TXT_COLOR_MATRIX+$1300,x
+.2212	e8		inx		            inx
+.2213	f0 03		beq $2218	            beq _done
+.2215	4c 8e 21	jmp $218e	            jmp _loop
+.2218	a2 00		ldx #$00	_done       ldx #0
+.221a	60		rts		            rts
+.221b					led_on
+.221b	48		pha		            pha
+.221c	a9 e1		lda #$e1	            lda #$e1
+.221e	20 ea 20	jsr $20ea	            jsr kbd_send
+.2221	68		pla		            pla
+.2222	20 ea 20	jsr $20ea	            jsr kbd_send
+.2225	60		rts		            rts
+.2226					led_off
+.2226	48		pha		            pha
+.2227	a9 e2		lda #$e2	            lda #$e2
+.2229	20 ea 20	jsr $20ea	            jsr kbd_send
+.222c	68		pla		            pla
+.222d	20 ea 20	jsr $20ea	            jsr kbd_send
+.2230	60		rts		            rts
+.2231					led_rgb
+.2231	48		pha		            pha
+.2232	a9 e0		lda #$e0	            lda #$e0
+.2234	20 ea 20	jsr $20ea	            jsr kbd_send
+.2237	68		pla		            pla
+.2238	20 ea 20	jsr $20ea	            jsr kbd_send
+.223b	ad 51 22	lda $2251	            lda red
+.223e	20 ea 20	jsr $20ea	            jsr kbd_send
+.2241	ad 52 22	lda $2252	            lda green
+.2244	20 ea 20	jsr $20ea	            jsr kbd_send
+.2247	ad 53 22	lda $2253	            lda blue
+.224a	20 ea 20	jsr $20ea	            jsr kbd_send
+.224d	60		rts		            rts
+>224e	00				scancode    .byte 0
+>224f	00				leds        .byte 0
+>2250	00				is_release  .byte 0
+>2251	00				red         .byte 0
+>2252	00				green       .byte 0
+>2253	00				blue        .byte 0
+
+;******  End of listing

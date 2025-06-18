@@ -1,0 +1,128 @@
+
+; 64tass Turbo Assembler Macro V1.59.3120 listing file
+; 64tass --s-record -o c256_test.s37 --list c256_test.lst c256_test.asm
+; Sun Jun 15 21:26:27 2025
+
+;Offset	;Hex		;Monitor	;Source
+
+;******  Processing input file: c256_test.asm
+
+=$af1064				STATUS_PORT 	= $AF1064
+=$af1064				KBD_STATUS      = $AF1064
+=$af1060				KBD_OUT_BUF 	= $AF1060
+=$af1060				KBD_INPT_BUF	= $AF1060
+=$af1064				KBD_CMD_BUF		= $AF1064
+=$af1060				KBD_DATA_BUF	= $AF1060
+=$af1060				PORT_A		    = $AF1060
+=$af1061				PORT_B			= $AF1061
+=$01					OUT_BUF_FULL    = $01
+=$02					INPT_BUF_FULL	= $02
+=$04					SYS_FLAG		= $04
+=$08					CMD_DATA		= $08
+=$10					KEYBD_INH       = $10
+=$20					TRANS_TMOUT	    = $20
+=$40					RCV_TMOUT		= $40
+=$80					PARITY_EVEN		= $80
+=$10					INH_KEYBOARD	= $10
+=$ae					KBD_ENA			= $AE
+=$ad					KBD_DIS			= $AD
+=$afa000				TXT_CHAR_MATRIX = $afa000   ; Text matrix
+=$afc000				TXT_COLOR_MATRIX = $afc000  ; Color matrix
+=$f0					TXT_COLOR = $f0
+>3000					txt_line    .dword ?
+>3004					color_line  .dword ?
+>3008					caps        .byte ?
+>fffc	00 20				vreset      .word <>start
+.2000	78		sei		start       sei
+.2001	38		sec		            sec
+.2002	fb		xce		            xce
+.2003	e2 30		sep #$30	            sep #$30
+.2005	20 6a 20	jsr $206a	            jsr clrscr
+.2008	a9 3e		lda #$3e	            lda #'>'
+.200a	20 32 20	jsr $2032	            jsr pr
+.200d	a9 20		lda #$20	            lda #' '
+.200f	20 32 20	jsr $2032	            jsr pr
+.2012	a9 00		lda #$00	            lda #0
+.2014	20 5b 20	jsr $205b	            jsr pr_sc
+.2017	20 2a 20	jsr $202a	loop        jsr get_sc
+.201a	20 5b 20	jsr $205b	_send       jsr pr_sc
+.201d	80 f8		bra $2017	            bra loop
+.201f					kbd_wait_out
+.201f	48		pha		                    pha
+.2020	af 64 10 af	lda $af1064	wait                lda @l KBD_STATUS       ; Get the keyboard status
+.2024	89 01		bit #$01	                    bit #OUT_BUF_FULL       ; Check to see if the output buffer is full
+.2026	f0 f8		beq $2020	                    beq wait                ; If it isn't, keep waiting
+.2028	68		pla		                    pla
+.2029	60		rts		                    rts
+.202a					get_sc
+.202a	20 1f 20	jsr $201f	            jsr kbd_wait_out
+.202d	af 60 10 af	lda $af1060	            lda KBD_DATA_BUF
+.2031	60		rts		_done       rts
+.2032					pr
+.2032	9f 00 a0 af	sta $afa000,x	            sta TXT_CHAR_MATRIX,x
+.2036	a9 f0		lda #$f0	            lda #TXT_COLOR
+.2038	9f 00 c0 af	sta $afc000,x	            sta TXT_COLOR_MATRIX,x
+.203c	e8		inx		            inx
+.203d	60		rts		            rts
+.203e					pr_hex
+.203e	48		pha		            pha
+.203f	29 0f		and #$0f	            and #$0f
+.2041	a8		tay		            tay
+.2042	b9 4a 20	lda $204a,y	            lda hex_digits,y
+.2045	20 32 20	jsr $2032	            jsr pr
+.2048	68		pla		            pla
+.2049	60		rts		            rts
+>204a	30 31 32 33 34 35 36 37		hex_digits  .null "0123456789ABCDEF"
+>2052	38 39 41 42 43 44 45 46 00
+.205b					pr_sc
+.205b	a2 02		ldx #$02	            ldx #2
+.205d	48		pha		            pha
+.205e	4a		lsr a		            lsr a
+.205f	4a		lsr a		            lsr a
+.2060	4a		lsr a		            lsr a
+.2061	4a		lsr a		            lsr a
+.2062	20 3e 20	jsr $203e	            jsr pr_hex
+.2065	68		pla		            pla
+.2066	20 3e 20	jsr $203e	            jsr pr_hex
+.2069	60		rts		            rts
+.206a					clrscr
+.206a	a9 00		lda #$00	            lda #<TXT_CHAR_MATRIX
+.206c	8d 00 30	sta $3000	            sta txt_line
+.206f	a9 a0		lda #$a0	            lda #>TXT_CHAR_MATRIX
+.2071	8d 01 30	sta $3001	            sta txt_line+1
+.2074	a9 af		lda #$af	            lda #`TXT_CHAR_MATRIX
+.2076	8d 03 30	sta $3003	            sta txt_line+3
+.2079	a9 00		lda #$00	            lda #<TXT_COLOR_MATRIX
+.207b	8d 04 30	sta $3004	            sta color_line
+.207e	a9 c0		lda #$c0	            lda #>TXT_COLOR_MATRIX
+.2080	8d 05 30	sta $3005	            sta color_line+1
+.2083	a9 af		lda #$af	            lda #`TXT_COLOR_MATRIX
+.2085	8d 07 30	sta $3007	            sta color_line+3
+.2088	a0 3c		ldy #$3c	            ldy #60
+.208a	a2 4f		ldx #$4f	loop2       ldx #79
+.208c	a9 20		lda #$20	_loop       lda #' '
+.208e	9f 00 a0 af	sta $afa000,x	            sta TXT_CHAR_MATRIX,x
+.2092	a9 f0		lda #$f0	            lda #TXT_COLOR
+.2094	9f 00 c0 af	sta $afc000,x	            sta TXT_COLOR_MATRIX,x
+.2098	ca		dex		            dex
+.2099	10 f1		bpl $208c	            bpl _loop
+.209b	18		clc		            clc
+.209c	ad 00 30	lda $3000	            lda txt_line
+.209f	69 50		adc #$50	            adc #80
+.20a1	8d 00 30	sta $3000	            sta txt_line
+.20a4	ad 01 30	lda $3001	            lda txt_line+1
+.20a7	69 00		adc #$00	            adc #0
+.20a9	8d 01 30	sta $3001	            sta txt_line+1
+.20ac	18		clc		            clc
+.20ad	ad 04 30	lda $3004	            lda color_line
+.20b0	69 50		adc #$50	            adc #80
+.20b2	8d 04 30	sta $3004	            sta color_line
+.20b5	ad 05 30	lda $3005	            lda color_line+1
+.20b8	69 00		adc #$00	            adc #0
+.20ba	8d 05 30	sta $3005	            sta color_line+1
+.20bd	88		dey		            dey
+.20be	10 ca		bpl $208a	            bpl loop2
+.20c0	a2 00		ldx #$00	            ldx #0
+.20c2	60		rts		            rts
+
+;******  End of listing

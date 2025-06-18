@@ -68,34 +68,203 @@ start       sei
             sec
             xce
 
+            rep #$30
+            .as
+            .xs
+
+            stz leds
+            stz is_release
+
             jsr clrscr
+
+            ; Set LED #1 to cyan
+
+            ; lda #128        ; Blue
+            ; pha
+            ; lda #128        ; Green
+            ; pha
+            ; lda #0          ; Red
+            ; pha
+            ; lda #1          ; LED #1
+            ; jsr led_rgb
+            ; pla             ; Clean the stack
+            ; pla
+            ; pla
+
+
+
+            ; Print the prompt
 
             lda #'>'
             jsr pr
             lda #' '
             jsr pr
 
-            lda #0
-            jsr pr_sc
-
 loop        jsr get_sc
+            cmp #0
+            beq loop
+
+            ; Check to see if it is the release prefix
+            cmp #$f0
+            bne _not_prefix
+            lda #1
+            sta is_release
+
+_wait2      jsr get_sc
+            cmp #0
+            beq _wait2
+            sta scancode
+
+_not_prefix ; Check to see if it's the CAPS lock press
+            cmp #$58
+            bne _not_caps
+
+            ; It is CAPS... make sure it's not the release
+            lda is_release
+            bne _not_caps
+
+            ; It is... toggle the CAPS LED
+            jsr caps_tog
+
+_not_caps   cmp #$16            ; '1'
+            bne _not_1
+
+            lda #1
+            jsr led_on
+            bra _process
+
+_not_1      cmp #$1e            ; '2'
+            bne _not_2
+
+            lda #1
+            jsr led_off
+            bra _process
+
+_not_2      cmp #$05            ; 'F1'
+            bne _not_f1
+
+            stz blue            ; Set LED to red
+            stz green
+            lda #255
+            sta red
+            lda #3
+            jsr led_rgb
+            bra _process
+
+_not_f1     cmp #$06            ; 'F2'
+            bne _not_f2
+
+            stz blue            ; Set LED to green
+            lda #255
+            sta green
+            stz red
+            lda #3
+            jsr led_rgb
+            bra _process
+
+_not_f2     cmp #$04            ; 'F3'
+            bne _not_f3
+
+            lda #255            ; Set LED to blue
+            sta blue
+            stz green
+            stz red
+            lda #3
+            jsr led_rgb
+            bra _process
+
+_not_f3     nop
+
+_process    lda is_release
+            beq _skip_f0
+
+            lda #'F'
+            jsr pr
+            lda #'0'
+            jsr pr
+            lda #' '
+            jsr pr
+
+_skip_f0    lda scancode
             jsr pr_sc
-            bra loop
+            stz is_release
+            jmp loop
+
+;
+; Toggle the CAPS lock key LED
+;
+caps_tog    .proc
+            lda leds
+            eor #$04
+            sta leds
+
+            lda #$ed
+            jsr kbd_send
+
+            lda leds
+            jsr kbd_send
+
+            lda leds
+            beq _nocaps
+
+            ldx #0
+            lda #']'
+            jsr pr
+            lda #' '
+            jsr pr
+            bra _done
+            
+_nocaps     ldx #0
+            lda #'>'
+            jsr pr
+            lda #' '
+            jsr pr
+
+_done       rts
+            .pend
+
+;
+; Send a byte to the keyboard
+;
+kbd_send    .proc
+            sta PS2_OUT
+
+            lda #PS2_CTRL_KBD_WR
+            sta PS2_CTRL
+            stz PS2_CTRL
+
+_wait       jsr get_sc
+            cmp #0
+            beq _wait
+
+
+_done       rts
+            .pend
 
 ;
 ; Poll the keyboard for a scan code
 ;
 get_sc      .proc
+            phy
+            ldy #100
             stz MMU_IO_CTRL
 
-; _wait       lda PS2_STAT
-;             and #PS2_STAT_KB_EMPTY
-;             cmp #PS2_STAT_KB_EMPTY
-;             beq _wait
+_wait       lda PS2_STAT
+            and #PS2_STAT_KB_EMPTY
+            cmp #PS2_STAT_KB_EMPTY
+            bne _ready
 
-            lda PS2_KBD_IN
+            dey
+            bne _wait
+
+            lda #0
+            bra _done
+
+_ready      lda PS2_KBD_IN
+            sta scancode
             
-_done       rts
+_done       ply
+            rts
             .pend
 
 pr          .proc
@@ -132,9 +301,7 @@ pr_hex      .proc
 
 hex_digits  .null "0123456789ABCDEF"
 
-pr_sc       .proc
-            ldx #2
-            
+pr_sc       .proc     
             pha
             lsr a
             lsr a
@@ -144,27 +311,138 @@ pr_sc       .proc
             pla
 
             jsr pr_hex
+
+            .rept 10
+            lda #' '
+            jsr pr
+            .endrept
+
+            ldx #2
             
             rts
             .pend
 
 clrscr      .proc
-            ldx #79
+            ldx #0
 
 _loop       lda #$02
             sta MMU_IO_CTRL
             lda #' '
             sta TXT_CHAR_MATRIX,x
+            sta TXT_CHAR_MATRIX+$100,x
+            sta TXT_CHAR_MATRIX+$200,x
+            sta TXT_CHAR_MATRIX+$300,x
+            sta TXT_CHAR_MATRIX+$400,x
+            sta TXT_CHAR_MATRIX+$500,x
+            sta TXT_CHAR_MATRIX+$600,x
+            sta TXT_CHAR_MATRIX+$700,x
+            sta TXT_CHAR_MATRIX+$800,x
+            sta TXT_CHAR_MATRIX+$900,x
+            sta TXT_CHAR_MATRIX+$a00,x
+            sta TXT_CHAR_MATRIX+$b00,x
+            sta TXT_CHAR_MATRIX+$c00,x
+            sta TXT_CHAR_MATRIX+$d00,x
+            sta TXT_CHAR_MATRIX+$e00,x
+            sta TXT_CHAR_MATRIX+$f00,x
+            sta TXT_CHAR_MATRIX+$1000,x
+            sta TXT_CHAR_MATRIX+$1100,x
+            sta TXT_CHAR_MATRIX+$1200,x
+            sta TXT_CHAR_MATRIX+$1300,x
 
             lda #$03
             sta MMU_IO_CTRL
             lda #TXT_COLOR
             sta TXT_COLOR_MATRIX,x
+            sta TXT_COLOR_MATRIX+$100,x
+            sta TXT_COLOR_MATRIX+$200,x
+            sta TXT_COLOR_MATRIX+$300,x
+            sta TXT_COLOR_MATRIX+$400,x
+            sta TXT_COLOR_MATRIX+$500,x
+            sta TXT_COLOR_MATRIX+$600,x
+            sta TXT_COLOR_MATRIX+$700,x
+            sta TXT_COLOR_MATRIX+$800,x
+            sta TXT_COLOR_MATRIX+$900,x
+            sta TXT_COLOR_MATRIX+$a00,x
+            sta TXT_COLOR_MATRIX+$b00,x
+            sta TXT_COLOR_MATRIX+$c00,x
+            sta TXT_COLOR_MATRIX+$d00,x
+            sta TXT_COLOR_MATRIX+$e00,x
+            sta TXT_COLOR_MATRIX+$f00,x
+            sta TXT_COLOR_MATRIX+$1000,x
+            sta TXT_COLOR_MATRIX+$1100,x
+            sta TXT_COLOR_MATRIX+$1200,x
+            sta TXT_COLOR_MATRIX+$1300,x
 
-            dex
-            bpl _loop
+            inx
+            beq _done
+            jmp _loop
 
-            ldx #0
+_done       ldx #0
 
             rts
             .pend
+
+;
+; Turn on an RGB LED
+;
+; A = index of the LED
+;
+led_on      .proc
+            pha
+            lda #$e1
+            jsr kbd_send
+
+            pla
+            jsr kbd_send
+            rts
+            .pend
+
+;
+; Turn off an RGB LED
+;
+; A = index of the LED
+;
+led_off      .proc
+            pha
+            lda #$e2
+            jsr kbd_send
+
+            pla
+            jsr kbd_send
+            rts
+            .pend
+
+;
+; Set the color of an LED
+;
+; A = index of the LED
+; 5,s = blue
+; 4,s = green
+; 3,s = red
+;
+led_rgb     .proc
+            pha
+            lda #$e0
+            jsr kbd_send
+
+            pla
+            jsr kbd_send
+
+            lda red
+            jsr kbd_send
+
+            lda green
+            jsr kbd_send
+
+            lda blue
+            jsr kbd_send
+
+            rts
+            .pend
+
+scancode    .byte 0
+leds        .byte 0
+is_release  .byte 0
+red         .byte 0
+green       .byte 0
+blue        .byte 0

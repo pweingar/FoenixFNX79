@@ -26,8 +26,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "ringbuffer.h"
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -92,7 +90,7 @@ const uint8_t PS2_REPLY_RESEND = 0xfe;
  * Bit codes for the various status lights
  * There is no NUMLOCK or SCROLL key on this keyboard, so those bits are ignored.
  */
-const uint8_t PS2_STAT_CAPS = 0x02;
+const uint8_t PS2_STAT_CAPS = 0x04;
 const uint8_t PS2_STAT_POWER = 0x10;
 const uint8_t PS2_STAT_MEDIA1 = 0x20;
 const uint8_t PS2_STAT_MEDIA2 = 0x40;
@@ -105,6 +103,7 @@ const uint8_t PS2_STAT_MEDIA2 = 0x40;
 #define NUM_ROWS 		6
 #define NUM_COLUMNS		16
 
+const short HEARTBEAT_PERIOD = 10;	// Number of milliseconds per heart beat
 const uint8_t HEARTBEAT_CNT = 10;	// Number of counts of the heart beat before we toggle the LED
 const uint8_t DEBOUNCE_CNT = 2;		// Number of times through a loop to verify the switch isn't bouncing
 
@@ -425,8 +424,8 @@ void ws2812_init() {
  */
 void ps2_set_leds(uint8_t status) {
 	ws2812_set_state(LED_CAPS, ((status & PS2_STAT_CAPS) != 0));
-	ws2812_set_state(LED_POWER, ((status & PS2_STAT_POWER) != 0));
-	ws2812_set_state(LED_FLOPPY, ((status & PS2_STAT_MEDIA1) != 0));
+	ws2812_set_state(LED_POWER, 1);
+	// ws2812_set_state(LED_FLOPPY, ((status & PS2_STAT_MEDIA1) != 0));
 }
 
 /**
@@ -496,6 +495,17 @@ void key_to_led(uint8_t scancode) {
 }
 
 /**
+ * Set the initial delay and delay rate in milliseconds for the key repeat (typematic) function
+ *
+ * @param delay_ms the initial delay in milliseconds
+ * @param rate_ms the repeat rate delay in milliseconds
+ */
+void kbd_set_typematic(short delay_ms, short rate_ms) {
+	delay_initial = delay_ms;
+	delay_repeat = rate_ms;
+}
+
+/**
  * Send a key scan code to the host
  *
  * @param key_position the index of the key in the p_key_state table
@@ -561,7 +571,7 @@ void process_key(short key_position, short is_pressed) {
 			// Set the delay counters as well
 			last_pressed = key_position;
 			key_repeat_delay = 0;
-			key_init_delay = delay_initial;
+			key_init_delay = millis() + delay_initial;
 			// HAL_TIM_Base_Start_IT(&htim16);
 
 		} else {
@@ -664,21 +674,29 @@ void kbd_process() {
 		if (send_repeat) {
 			if (last_pressed != 0) {
 				// Send the key and reset the timers for another repeat
-
 				send_key(last_pressed, 1);
-				key_repeat_delay = delay_repeat;
+				key_repeat_delay = millis() + delay_repeat;
 				key_init_delay = 0;
 				send_repeat = 0;
+
 			} else {
 				// For some reason, we had a repeat flagged, but nothing to send
 				// Just clear all the typematic variables
-
 				key_repeat_delay = 0;
 				key_init_delay = 0;
 				send_repeat = 0;
 			}
 		}
 	}
+}
+
+/**
+ * Set whether or not keyboard scanning is enabled
+ *
+ * @param enable true if the keyboard scanning should be enabled, false otherwise
+ */
+void kbd_set_enable(bool enable) {
+	is_scan_disabled = !enable;
 }
 
 /**
@@ -701,7 +719,7 @@ void kbd_init() {
 	key_repeat_delay = 0;		// We're not repeating
 	send_repeat = 0;			// We don't need to send a repeat
 	delay_initial = 500;		// Default wait: 500 ms
-	delay_repeat = 109;			// Default repeat rate: 10 cps (100 ms between repeats)
+	delay_repeat = 10;			// Default repeat rate: 10 cps (100 ms between repeats)
 
 	is_scan_disabled = 0;		// Enable scanning
 
@@ -790,7 +808,24 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  HAL_Delay(10);
+	  HAL_Delay(HEARTBEAT_PERIOD);
+
+	  // Adjust the counters for the typematic system
+	  if (key_init_delay > 0) {
+		  // If initial delay has not been reached, count it down...
+		  if (key_init_delay < millis()) {
+			  // We have reached zero or less... lock it to zero and trigger a repeat
+			  key_init_delay = 0;
+			  send_repeat = true;
+		  }
+	  } else if (key_repeat_delay > 0) {
+		  // If repeat delay has not been reached, count it down...
+		  if (key_repeat_delay < millis()) {
+			  // We have reached zero or less... lock it to zero and trigger a repeat
+			  key_repeat_delay = 0;
+			  send_repeat = true;
+		  }
+	  }
 
 	  // Check for commands from the host...
 	  old_modifier_leds = modifier_leds;
@@ -803,11 +838,6 @@ int main(void)
 	  // Check for changes to key presses in the key matrix
 	  // Issue messages to the host for any changes
 	  kbd_process();
-
-//	  if (ps2_has_received_data()) {
-//		  uint8_t data = ps2_receive();
-//		  key_to_led(data);
-//	  }
 
 	  // Send the changes to the RGB LEDs out to the WS2812s
 	  ws2812_update();
