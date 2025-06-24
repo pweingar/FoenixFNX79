@@ -4,9 +4,6 @@
 
             .cpu "65816"
 
-MMU_MEM_CTRL = $0000
-MMU_IO_CTRL = $0001
-
 PS2_CTRL = $d640
 PS2_CTRL_KBD_WR = $02
 PS2_CTRL_MS_WR = $04
@@ -25,8 +22,6 @@ PS2_STAT_MS_NAK = $10
 PS2_STAT_MS_EMPTY = $02
 PS2_STAT_KB_EMPTY = $01
 
-TXT_CHAR_MATRIX = $c000     ; Text matrix
-TXT_COLOR_MATRIX = $c000    ; Color matrix
 
 ; STATUS_PORT 	= $AF1807
 ; KBD_STATUS      = $AF1807
@@ -47,58 +42,87 @@ TXT_COLOR_MATRIX = $c000    ; Color matrix
 ; KBD_ENA			= $AE
 ; KBD_DIS			= $AD
 
-; TXT_CHAR_MATRIX = $afa000   ; Text matrix
-; TXT_COLOR_MATRIX = $afc000  ; Color matrix
+;;
+;; Imports
+;;
 
-TXT_COLOR = $f0
+            .include "f256_sections.asm"
+            .include "f256_mmu.asm"
+            .include "f256_text.asm"
+
+;;
+;; Variables
+;;
+
+            .section variables
+scancode    .byte ?
+leds        .byte ?
+is_release  .byte ?
+red         .byte ?
+green       .byte ?
+blue        .byte ? 
+            .endsection
+
+;;
+;; Vectors
+;;
+
+            .section hreset
+vreset      .word <>start
+            .endsection
 
 ;;
 ;; Code
 ;;
 
-* = $fffc
-vreset      .word <>start
-
-* = $2000
-
+            .section code
 ;
 ; Main code
 ;
 start       sei
-            sec
+            clc
             xce
 
-            rep #$30
+            ; Set the direct page
+            rep #$20
+            .al
+            lda #<>DP_BASE
+            tcd
+            .dpage DP_BASE
+
+            ; 8-bit accumulator and 16-bit index registers will be standard
+            sep #$20
+            rep #$10
             .as
-            .xs
+            .xl
+
+            ; Set the data bank register to 0
+            lda #0
+            pha
+            plb
+            .databank 0
 
             stz leds
             stz is_release
 
-            jsr clrscr
+            jsr text.init
 
-            ; Set LED #1 to cyan
+            ; Print the greeting
+            ldx #0
+            ldy #0
+            jsr text.set_xy
 
-            ; lda #128        ; Blue
-            ; pha
-            ; lda #128        ; Green
-            ; pha
-            ; lda #0          ; Red
-            ; pha
-            ; lda #1          ; LED #1
-            ; jsr led_rgb
-            ; pla             ; Clean the stack
-            ; pla
-            ; pla
-
-
+            ldx #<>greeting
+            jsr text.puts
 
             ; Print the prompt
 
-            lda #'>'
-            jsr pr
-            lda #' '
-            jsr pr
+            ldx #0
+            ldy #3
+            jsr text.set_xy
+
+            ldx #<>prompt
+            jsr text.puts
 
 loop        jsr get_sc
             cmp #0
@@ -106,7 +130,7 @@ loop        jsr get_sc
 
             ; Check to see if it is the release prefix
             cmp #$f0
-            bne _not_prefix
+            bne _not_f0
             lda #1
             sta is_release
 
@@ -115,13 +139,22 @@ _wait2      jsr get_sc
             beq _wait2
             sta scancode
 
-_not_prefix ; Check to see if it's the CAPS lock press
+_not_f0     cmp #$e0
+            bne _not_e0
+
+            ldx #<>prefix_e0
+            jsr text.puts
+            bra loop
+
+_not_e0     nop
+
+            ; Check to see if it's the CAPS lock press
             cmp #$58
             bne _not_caps
 
-            ; It is CAPS... make sure it's not the release
+            ; It is CAPS... make sure it is the release
             lda is_release
-            bne _not_caps
+            beq _not_caps
 
             ; It is... toggle the CAPS LED
             jsr caps_tog
@@ -178,12 +211,8 @@ _not_f3     nop
 _process    lda is_release
             beq _skip_f0
 
-            lda #'F'
-            jsr pr
-            lda #'0'
-            jsr pr
-            lda #' '
-            jsr pr
+            ldx #<>prefix_f0
+            jsr text.puts
 
 _skip_f0    lda scancode
             jsr pr_sc
@@ -195,30 +224,39 @@ _skip_f0    lda scancode
 ;
 caps_tog    .proc
             lda leds
-            eor #$04
+            beq set_caps
+
+            stz leds
+            bra send_caps
+
+set_caps    lda #$04
             sta leds
 
-            lda #$ed
+send_caps   lda #$ed
             jsr kbd_send
 
             lda leds
             jsr kbd_send
 
             lda leds
-            beq _nocaps
+            beq nocaps
+
+            ; Print the caps lock prompt
 
             ldx #0
-            lda #']'
-            jsr pr
-            lda #' '
-            jsr pr
-            bra _done
+            ldy #3
+            jsr text.set_xy
             
-_nocaps     ldx #0
-            lda #'>'
-            jsr pr
-            lda #' '
-            jsr pr
+            ldx #<>prompt2
+            jsr text.puts
+            
+nocaps      ; Print the no caps lock prompt
+            ldx #0
+            ldy #3
+            jsr text.set_xy
+            
+            ldx #<>prompt
+            jsr text.puts
 
 _done       rts
             .pend
@@ -236,7 +274,6 @@ kbd_send    .proc
 _wait       jsr get_sc
             cmp #0
             beq _wait
-
 
 _done       rts
             .pend
@@ -267,33 +304,19 @@ _done       ply
             rts
             .pend
 
-pr          .proc
-                        ; Switch to the text matrix
-            pha
-            lda #$02
-            sta MMU_IO_CTRL
-            pla
-            sta TXT_CHAR_MATRIX,x
-
-            ; Switch to the color matrix
-            lda #$03
-            sta MMU_IO_CTRL
-            lda #TXT_COLOR
-            sta TXT_COLOR_MATRIX,x
-
-            inx
-
-            rts
-            .pend
-
 pr_hex      .proc
             pha
 
-            and #$0f
+            rep #$20
+            .al
+            and #$000f
             tay
+            sep #$20
+            .as
+
             lda hex_digits,y
 
-            jsr pr
+            jsr text.put
 
             pla
             rts
@@ -312,73 +335,13 @@ pr_sc       .proc
 
             jsr pr_hex
 
-            .rept 10
-            lda #' '
-            jsr pr
-            .endrept
+            ldx #<>blanks
+            jsr text.puts
 
+            jsr text.get_xy
             ldx #2
+            jsr text.set_xy
             
-            rts
-            .pend
-
-clrscr      .proc
-            ldx #0
-
-_loop       lda #$02
-            sta MMU_IO_CTRL
-            lda #' '
-            sta TXT_CHAR_MATRIX,x
-            sta TXT_CHAR_MATRIX+$100,x
-            sta TXT_CHAR_MATRIX+$200,x
-            sta TXT_CHAR_MATRIX+$300,x
-            sta TXT_CHAR_MATRIX+$400,x
-            sta TXT_CHAR_MATRIX+$500,x
-            sta TXT_CHAR_MATRIX+$600,x
-            sta TXT_CHAR_MATRIX+$700,x
-            sta TXT_CHAR_MATRIX+$800,x
-            sta TXT_CHAR_MATRIX+$900,x
-            sta TXT_CHAR_MATRIX+$a00,x
-            sta TXT_CHAR_MATRIX+$b00,x
-            sta TXT_CHAR_MATRIX+$c00,x
-            sta TXT_CHAR_MATRIX+$d00,x
-            sta TXT_CHAR_MATRIX+$e00,x
-            sta TXT_CHAR_MATRIX+$f00,x
-            sta TXT_CHAR_MATRIX+$1000,x
-            sta TXT_CHAR_MATRIX+$1100,x
-            sta TXT_CHAR_MATRIX+$1200,x
-            sta TXT_CHAR_MATRIX+$1300,x
-
-            lda #$03
-            sta MMU_IO_CTRL
-            lda #TXT_COLOR
-            sta TXT_COLOR_MATRIX,x
-            sta TXT_COLOR_MATRIX+$100,x
-            sta TXT_COLOR_MATRIX+$200,x
-            sta TXT_COLOR_MATRIX+$300,x
-            sta TXT_COLOR_MATRIX+$400,x
-            sta TXT_COLOR_MATRIX+$500,x
-            sta TXT_COLOR_MATRIX+$600,x
-            sta TXT_COLOR_MATRIX+$700,x
-            sta TXT_COLOR_MATRIX+$800,x
-            sta TXT_COLOR_MATRIX+$900,x
-            sta TXT_COLOR_MATRIX+$a00,x
-            sta TXT_COLOR_MATRIX+$b00,x
-            sta TXT_COLOR_MATRIX+$c00,x
-            sta TXT_COLOR_MATRIX+$d00,x
-            sta TXT_COLOR_MATRIX+$e00,x
-            sta TXT_COLOR_MATRIX+$f00,x
-            sta TXT_COLOR_MATRIX+$1000,x
-            sta TXT_COLOR_MATRIX+$1100,x
-            sta TXT_COLOR_MATRIX+$1200,x
-            sta TXT_COLOR_MATRIX+$1300,x
-
-            inx
-            beq _done
-            jmp _loop
-
-_done       ldx #0
-
             rts
             .pend
 
@@ -440,9 +403,11 @@ led_rgb     .proc
             rts
             .pend
 
-scancode    .byte 0
-leds        .byte 0
-is_release  .byte 0
-red         .byte 0
-green       .byte 0
-blue        .byte 0
+prompt      .null "> "
+prompt2     .null "] "
+prefix_f0   .null "F0 "
+prefix_e0   .null "E0 "
+greeting    .null "F256 PS/2 Keyboard Test Harness",10,"Press keys to see scan codes:",10,10
+blanks      .null "      "
+
+            .endsection

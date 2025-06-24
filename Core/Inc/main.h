@@ -59,6 +59,8 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
+extern TIM_HandleTypeDef htim1;
+
 /**
  * Wait for us microseconds
  *

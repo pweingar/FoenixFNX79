@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include <ps2_h.bak>
 #include "main.h"
 #include "stm32f0xx_it.h"
 /* Private includes ----------------------------------------------------------*/

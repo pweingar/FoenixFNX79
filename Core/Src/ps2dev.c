@@ -30,26 +30,30 @@
 
 //since for the device side we are going to be in charge of the clock,
 //the two defines below are how long each _phase_ of the clock cycle is
-#define CLKFULL 40
+#define CLKFULL 	40
 // we make changes in the middle of a phase, this how long from the
 // start of phase to the when we drive the data line
-#define CLKHALF 20
+#define CLKHALF 	20
 
 // Delay between bytes
 // I've found i need at least 400us to get this working at all,
 // but even more is needed for reliability, so i've put 1000us
-#define BYTEWAIT 1000
+#define BYTEWAIT 	1000
 
 // Timeout if computer not sending for 30ms
-#define TIMEOUT 30
+#define TIMEOUT 	30
 
-#define HIGH	1
-#define LOW		0
+#define HIGH		1
+#define LOW			0
 
 #define ENOERR		0
 #define EABORT		-1
 #define ETIMEOUT	-2
 #define ECANCEL		-3
+
+const uint8_t keyboard_type = 0xf0;
+
+const uint8_t keyboard_version = 0x01;
 
 /**
  * Initial delay, in milliseconds, indexed by the two bits from the typematic PS/2 command
@@ -369,7 +373,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 
 	switch (cmd) {
 		case 0xFF: //reset
-			kbd_set_typematic(500, 10);
+			kbd_set_typematic(1000, 100);
 			ps2_keyboard_scan_code_set(2);
 			kbd_set_enable(true);
 			*leds_ = 0;
@@ -385,7 +389,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 
 		case 0xF6: //set defaults
 			//enter stream mode
-			kbd_set_typematic(500, 10);
+			kbd_set_typematic(1000, 100);
 			ps2_keyboard_scan_code_set(2);
 			kbd_set_enable(true);
 			*leds_ = 0;
@@ -424,7 +428,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 				// ensure ID gets written, some hosts may be sensitive
 				if (ps2_do_write(0xAB) == EABORT) continue;
 				// this is critical for combined ports (they decide mouse/kb on this)
-				if (ps2_do_write(0x83) == EABORT) continue;
+				if (ps2_do_write(keyboard_type) == EABORT) continue;
 				break;
 			} while (!handling_io_abort);
 			break;

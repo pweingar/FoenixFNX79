@@ -19,6 +19,7 @@ extern int ps2_available();
 extern void ps2_keyboard_init();
 extern void ps2_keyboard_scan_code_set(short set);
 extern short ps2_keyboard_get_set();
+
 extern int ps2_keyboard_press(uint8_t code);
 extern int ps2_keyboard_release(uint8_t code);
 extern int ps2_keyboard_press_special(uint8_t code);

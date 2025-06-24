@@ -17,7 +17,6 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include "ps2dev.h"
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -26,46 +25,20 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "ps2dev.h"
+#include "ws2812.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
-typedef struct {
-	bool is_on;
-	uint8_t b;
-	uint8_t r;
-	uint8_t g;
-} PixelRGB_t;
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-//
-// WS2812 LED constants
-//
-
-#define BITS_PER_PIXEL	24									// 24 bits for WS2812
-#define NUM_PIXELS		12
-#define DMA_BUFF_SIZE	((NUM_PIXELS * BITS_PER_PIXEL) + 1)
-
-// WS2812 duty cycle timing constants for 0 and 1
-const uint8_t NEOPIXEL_ZERO = 19;
-const uint8_t NEOPIXEL_ONE = 38;
-
-// Status bits to indicate if the LED transfer DMA cycle is running
-const uint8_t DMA_STATE_RESTING = 0;
-const uint8_t DMA_STATE_SENDING = 1;
-
-// RGB Status LED addresses
-// TODO: Fix the addresses once the off-by-one issue is fixed
-const uint8_t LED_FUNC_BASE = 3;
-const uint8_t LED_CAPS = 2;
-const uint8_t LED_POWER = 1;
-const uint8_t LED_FLOPPY = 0;
-// const uint8_t LED_HDD = 0;
+const long led_dim_length_ms = 1500;
 
 //
 // PS/2 command and response codes
@@ -201,11 +174,6 @@ DMA_HandleTypeDef hdma_tim1_ch2;
 
 /* USER CODE BEGIN PV */
 
-PixelRGB_t pixel[NUM_PIXELS] = {0};
-uint32_t dmaBuffer[DMA_BUFF_SIZE] = {0};
-uint8_t dma_state = 0;
-bool ws2812_needs_update = false;
-
 volatile short is_transmitting = 0;		// Flag to indicate if the controller is currently sending a packet
 volatile short key_init_delay;			// Counter for the typematic delay on the last pressed key
 volatile short key_repeat_delay;		// Counter for the typematic repeat delay
@@ -234,6 +202,8 @@ int	heartbeat_count = 0;				// Count of loops for the heart beat LED
 
 uint8_t modifier_leds = 0;
 
+static short ws2812_intro_state = 2;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -251,17 +221,8 @@ static void MX_TIM16_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
-	HAL_TIM_PWM_Stop_DMA(htim, TIM_CHANNEL_2);
-	dma_state = DMA_STATE_RESTING;
-}
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == &htim3) {
-		// ps2_tick();
-		// HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_1);
-
-	} else if (htim == &htim16) {
+	if (htim == &htim16) {
 		// Increase the millisecond counter
 		millisecond_count++;
 	}
@@ -304,115 +265,6 @@ void stat_led_set(short led, bool is_on) {
 	}
 }
 
-/**
- * Set the color of a given LED in the records, but do not actually update the LEDs
- *
- * @param led the index of the LED to update (0 -- 11)
- * @param red the red component 0 -- 255
- * @param green the green component 0 -- 255
- * @param blue the blue component 0 -- 255
- */
-void ws2812_set_color(unsigned short led, uint8_t red, uint8_t green, uint8_t blue) {
-	if (led < NUM_PIXELS) {
-		pixel[led].r = red;
-		pixel[led].g = green;
-		pixel[led].b = blue;
-		ws2812_needs_update = true;
-	}
-}
-
-/**
- * Set whether or not an LED is on
- *
- * @param led the index of the LED to update (0 -- 11)
- * @param is_on TRUE if the LED should be on, FALSE if it should be off
- */
-void ws2812_set_state(short led, bool is_on) {
-	if (led < NUM_PIXELS) {
-		pixel[led].is_on = is_on;
-		ws2812_needs_update = true;
-	}
-}
-
-/**
- * Write the byte to the PWM buffer
- *
- * @param buffer pointer to the PWM buffer to write to
- * @param data the byte to write
- * @retval pointer to the next word in the PWM buffer
- */
-uint32_t * ws2812_buffer_byte(uint32_t * buffer, uint8_t data) {
-	uint8_t mask = 0x80;
-	for (short i = 0; i < 8; i++) {
-		if (data & mask) {
-			*buffer++ = NEOPIXEL_ONE;
-		} else {
-			*buffer++ = NEOPIXEL_ZERO;
-		}
-
-		mask = mask >> 1;
-	}
-
-	return buffer;
-}
-
-/**
- * Update the physical LEDs with the set colors
- */
-void ws2812_update() {
-	if (ws2812_needs_update) {
-		// Update the DMA buffer
-		uint32_t * buffer = dmaBuffer;
-
-		for (int led = 0; led < NUM_PIXELS; led++) {
-			if (pixel[led].is_on) {
-				buffer = ws2812_buffer_byte(buffer, pixel[led].g);
-				buffer = ws2812_buffer_byte(buffer, pixel[led].r);
-				buffer = ws2812_buffer_byte(buffer, pixel[led].b);
-			} else {
-				buffer = ws2812_buffer_byte(buffer, 0);
-				buffer = ws2812_buffer_byte(buffer, 0);
-				buffer = ws2812_buffer_byte(buffer, 0);
-			}
-		}
-		*buffer++ = 0;
-
-		// Start the DMA
-		dma_state = DMA_STATE_SENDING;
-		HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, dmaBuffer, DMA_BUFF_SIZE);
-
-		// Wait until the DMA is finished
-		while (dma_state == DMA_STATE_SENDING) ;
-
-		ws2812_needs_update = false;
-	}
-}
-
-/**
- * Initialize the variables for the WS2812 RGB LEDs
- */
-void ws2812_init() {
-	dma_state = DMA_STATE_RESTING;
-
-	for (short i = 0; i < NUM_PIXELS; i++) {
-		ws2812_set_color(i, 0, 0, 0);
-		ws2812_set_state(i, false);
-	}
-
-	ws2812_set_color(LED_CAPS, 255, 0, 255);
-	ws2812_set_color(LED_POWER, 0, 255, 0);
-	ws2812_set_state(LED_POWER, true);
-
-	for (int i = 0; i < 8; i++) {
-		ws2812_set_color(LED_FUNC_BASE + i, 128, 64, 0);
-		ws2812_set_state(LED_FUNC_BASE + i, true);
-	}
-
-	for (short i = 0; i < DMA_BUFF_SIZE; i++) {
-		dmaBuffer[i] = 0;
-	}
-}
-
 //
 // PS/2 Command code
 //
@@ -424,8 +276,7 @@ void ws2812_init() {
  */
 void ps2_set_leds(uint8_t status) {
 	ws2812_set_state(LED_CAPS, ((status & PS2_STAT_CAPS) != 0));
-	ws2812_set_state(LED_POWER, 1);
-	// ws2812_set_state(LED_FLOPPY, ((status & PS2_STAT_MEDIA1) != 0));
+	ws2812_trigger();
 }
 
 /**
@@ -475,23 +326,6 @@ int is_column_asserted(short column) {
 	} else {
 		return 0;
 	}
-}
-
-/**
- * Set the function key LEDs to show the binary pattern of the scan code
- */
-void key_to_led(uint8_t scancode) {
-	uint8_t mask = 0x80;
-	for (int i = 0; i < 8; i++) {
-		if (scancode & mask) {
-			ws2812_set_color(LED_FUNC_BASE + i, 128, 64, 0);
-		} else {
-			ws2812_set_color(LED_FUNC_BASE + i, 0, 0, 0);
-		}
-		mask = mask >> 1;
-	}
-
-	ws2812_update();
 }
 
 /**
@@ -571,7 +405,7 @@ void process_key(short key_position, short is_pressed) {
 			// Set the delay counters as well
 			last_pressed = key_position;
 			key_repeat_delay = 0;
-			key_init_delay = millis() + delay_initial;
+			key_init_delay = 0; // millis() + delay_initial;
 			// HAL_TIM_Base_Start_IT(&htim16);
 
 		} else {
@@ -670,23 +504,23 @@ void kbd_process() {
 			set_row(row, 0);
 		}
 
-		// Next... check to see if we need to repeat the last key pressed
-		if (send_repeat) {
-			if (last_pressed != 0) {
-				// Send the key and reset the timers for another repeat
-				send_key(last_pressed, 1);
-				key_repeat_delay = millis() + delay_repeat;
-				key_init_delay = 0;
-				send_repeat = 0;
-
-			} else {
-				// For some reason, we had a repeat flagged, but nothing to send
-				// Just clear all the typematic variables
-				key_repeat_delay = 0;
-				key_init_delay = 0;
-				send_repeat = 0;
-			}
-		}
+//		// Next... check to see if we need to repeat the last key pressed
+//		if (send_repeat) {
+//			if (last_pressed != 0) {
+//				// Send the key and reset the timers for another repeat
+//				send_key(last_pressed, 1);
+//				key_repeat_delay = millis() + delay_repeat;
+//				key_init_delay = 0;
+//				send_repeat = 0;
+//
+//			} else {
+//				// For some reason, we had a repeat flagged, but nothing to send
+//				// Just clear all the typematic variables
+//				key_repeat_delay = 0;
+//				key_init_delay = 0;
+//				send_repeat = 0;
+//			}
+//		}
 	}
 }
 
@@ -718,8 +552,8 @@ void kbd_init() {
 	key_init_delay = 0;			// We're not waiting for the initial delay
 	key_repeat_delay = 0;		// We're not repeating
 	send_repeat = 0;			// We don't need to send a repeat
-	delay_initial = 500;		// Default wait: 500 ms
-	delay_repeat = 10;			// Default repeat rate: 10 cps (100 ms between repeats)
+	delay_initial = 1000;		// Default wait: 1000 ms
+	delay_repeat = 100;			// Default repeat rate: 10 cps (100 ms between repeats)
 
 	is_scan_disabled = 0;		// Enable scanning
 
@@ -839,6 +673,28 @@ int main(void)
 	  // Issue messages to the host for any changes
 	  kbd_process();
 
+	  switch (ws2812_intro_state) {
+	  case 2:
+		  if (millis() < led_dim_length_ms) {
+			  ws2812_dim(millis(), led_dim_length_ms);
+	  	  } else {
+	  		ws2812_intro_state = 1;
+	  	  }
+		  ws2812_trigger();
+		  break;
+
+	  case 1:
+		  for (short i = 1; i < 12; i++) {
+			  ws2812_set_state(i, false);
+		  }
+		  ws2812_intro_state = 0;
+		  ws2812_trigger();
+		  break;
+
+	  default:
+		  break;
+	  }
+
 	  // Send the changes to the RGB LEDs out to the WS2812s
 	  ws2812_update();
 
@@ -938,7 +794,7 @@ static void MX_TIM1_Init(void)
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_SET;
   sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
