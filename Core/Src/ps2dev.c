@@ -3,6 +3,8 @@
  *
  *  Created on: Jun 13, 2025
  *      Author: pjw
+ *
+ *      Modified for STM32 HAL from the Arduino ps2dev library: https://github.com/harvie/ps2dev
  */
 
 

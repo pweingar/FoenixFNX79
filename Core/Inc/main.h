@@ -93,7 +93,7 @@ extern void kbd_set_enable(bool enable);
  * @param delay_ms the initial delay in milliseconds
  * @param rate_ms the repeat rate delay in milliseconds
  */
-extern void kbd_set_typematic(short delay_ms, short rate_ms);
+extern void kbd_set_typematic(long delay_ms, long rate_ms);
 
 /**
  * Set whether or not an LED is on

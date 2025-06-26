@@ -46,7 +46,7 @@ const uint8_t DMA_STATE_SENDING = 1;
  * Default colors for the RGB LEDs at start time
  */
 const pixel_rgb_t led_defaults[] = {
-		{0, 255, 0, true},			// power is green
+		{0, 64, 0, true},			// power is green
 		{0, 0, 255, true},			// LED 1 and 2 are blue
 		{0, 0, 255, true},
 		{255, 0, 255, true},		// CAPS is purple

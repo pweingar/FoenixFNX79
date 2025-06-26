@@ -108,6 +108,29 @@ done        pla
             .pend
 
 ;
+; Clear the current line of text
+;
+clr_line    .proc
+            phy
+
+            ldy column
+loop        jsr mmu.go_io_2
+            lda #' '
+            sta (line_ptr),y
+
+            jsr mmu.go_io_3
+            lda color
+            sta (line_ptr),y
+
+            iny
+            cpy num_cols
+            bne loop
+
+            ply
+            rts
+            .pend
+
+;
 ; Clear the screen and home the text cursor
 ;
 clear       .proc

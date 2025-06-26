@@ -45,8 +45,9 @@ For the moment, at least, MON, APP, and MENU keys are assigned to work like the 
 | Left "blank"  | 0x5a            | 0x13            |
 | Right "blank" | 0x29            | 0x53            |
 
-## TODO
+## To Do
 
-1. Support for auto-repeat and the command to set the rate and delay
-1. Command to set the RGB LED colors
-1. Write documentation
+1. Adjust timing logic for PS/2 commands being sent from the host to the keyboard to better support variations from different computer's
+   implementation of the protocol.
+1. Adjust logic for the production board (when available).
+1. Create final production version of the firmware.

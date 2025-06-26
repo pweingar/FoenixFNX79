@@ -51,13 +51,28 @@ PS2_STAT_KB_EMPTY = $01
             .include "f256_text.asm"
 
 ;;
+;; Local constants
+;;
+
+MAX_SEQUENCE = 10
+
+HOME_X = 2
+HOME_Y = 3
+
+STATE_DEFAULT = 0
+STATE_E0 = 1
+STATE_F0 = 2
+STATE_E0F0 = 3
+
+;;
 ;; Variables
 ;;
 
             .section variables
+state       .byte ?
+sc_count    .byte ?
 scancode    .byte ?
 leds        .byte ?
-is_release  .byte ?
 red         .byte ?
 green       .byte ?
 blue        .byte ? 
@@ -102,8 +117,12 @@ start       sei
             plb
             .databank 0
 
+            stz state
+            stz sc_count
             stz leds
-            stz is_release
+            stz red
+            stz green
+            stz blue
 
             jsr text.init
 
@@ -117,9 +136,13 @@ start       sei
 
             ; Print the prompt
 
-            ldx #0
-            ldy #3
+pr_prompt   ldx #0
+            ldy #HOME_Y
             jsr text.set_xy
+
+            jsr text.clr_line
+
+            stz sc_count
 
             ldx #<>prompt
             jsr text.puts
@@ -128,96 +151,136 @@ loop        jsr get_sc
             cmp #0
             beq loop
 
-            ; Check to see if it is the release prefix
-            cmp #$f0
-            bne _not_f0
-            lda #1
-            sta is_release
-
-_wait2      jsr get_sc
-            cmp #0
-            beq _wait2
             sta scancode
 
-_not_f0     cmp #$e0
-            bne _not_e0
+            ; Dispatch on the state
+            lda state
+            beq st_default
+            cmp #STATE_E0
+            beq st_e0
+            cmp #STATE_F0
+            beq st_f0
+            cmp #STATE_E0F0
+            beq st_e0f0
+
+            bra loop
+
+;
+; STATE_DEFAULT -- 
+;
+st_default  lda sc_count                ; clear the line if we have printed 10 sequences
+            cmp #MAX_SEQUENCE
+            blt dont_clear
+
+            ldx #HOME_X
+            ldy #HOME_Y
+            jsr text.set_xy
+
+            jsr text.clr_line
+
+            stz sc_count
+
+dont_clear  ; Dispatch based on the scan code
+            lda scancode
+            cmp #$e0
+            bne not_e0
+
+            ; Got E0... print it and move to STATE_E0
 
             ldx #<>prefix_e0
             jsr text.puts
-            bra loop
 
-_not_e0     nop
+            lda #STATE_E0
+            sta state
+            jmp loop
 
-            ; Check to see if it's the CAPS lock press
-            cmp #$58
-            bne _not_caps
+not_e0      cmp #$f0
+            bne not_f0
 
-            ; It is CAPS... make sure it is the release
-            lda is_release
-            beq _not_caps
-
-            ; It is... toggle the CAPS LED
-            jsr caps_tog
-
-_not_caps   cmp #$16            ; '1'
-            bne _not_1
-
-            lda #1
-            jsr led_on
-            bra _process
-
-_not_1      cmp #$1e            ; '2'
-            bne _not_2
-
-            lda #1
-            jsr led_off
-            bra _process
-
-_not_2      cmp #$05            ; 'F1'
-            bne _not_f1
-
-            stz blue            ; Set LED to red
-            stz green
-            lda #255
-            sta red
-            lda #3
-            jsr led_rgb
-            bra _process
-
-_not_f1     cmp #$06            ; 'F2'
-            bne _not_f2
-
-            stz blue            ; Set LED to green
-            lda #255
-            sta green
-            stz red
-            lda #3
-            jsr led_rgb
-            bra _process
-
-_not_f2     cmp #$04            ; 'F3'
-            bne _not_f3
-
-            lda #255            ; Set LED to blue
-            sta blue
-            stz green
-            stz red
-            lda #3
-            jsr led_rgb
-            bra _process
-
-_not_f3     nop
-
-_process    lda is_release
-            beq _skip_f0
+            ; Got F0... print it and move to STATE_F0
 
             ldx #<>prefix_f0
             jsr text.puts
 
-_skip_f0    lda scancode
-            jsr pr_sc
-            stz is_release
+            lda #STATE_F0
+            sta state
             jmp loop
+
+not_f0      ; Any other character, print it, and repeat
+            jsr sc_end          ; Print the code and end the sequence
+            jmp loop
+
+;
+; STATE_E0 --- prefix for special characters
+;
+
+st_e0       lda scancode
+            cmp #$f0
+            bne not_e0f0
+
+            ; Got E0 F0... move to STATE_E0F0
+
+            ldx #<>prefix_f0
+            jsr text.puts
+
+            lda #STATE_E0F0
+            sta state
+
+            jmp loop
+
+not_e0f0    ; Got any other code, print it and go back to DEFAULT
+            jsr sc_end          ; Print the code and end the sequence
+
+            stz state           ; Go back to the default state
+            jmp loop
+
+;
+; STATE_F0 -- Release of standard characters
+;
+
+st_f0       lda scancode
+            jsr sc_end          ; Print the code and end the sequence
+
+            lda scancode
+            cmp #$58
+            bne go_default
+
+            jsr caps_tog
+
+go_default  stz state           ; Go back to the default state
+            jmp loop
+
+;
+; STATE_E0F0 -- Release of special characters
+;
+
+st_e0f0     lda scancode
+            jsr sc_end          ; Print the code and end the sequence
+
+            stz state           ; Go back to the default state
+            jmp loop
+
+;
+; Print the end of a scan code sequence
+;
+sc_end      .proc
+            jsr pr_sc           ; Print the scan code
+            lda #' '
+            jsr text.put
+
+            inc sc_count        ; Add to the sequence count
+
+            lda sc_count
+            cmp #MAX_SEQUENCE
+            beq done
+
+            lda #'/'            ; Print a sequence end marker
+            jsr text.put
+            lda #' '
+            jsr text.put
+
+done        rts
+            .pend
 
 ;
 ; Toggle the CAPS lock key LED
@@ -235,45 +298,95 @@ set_caps    lda #$04
 send_caps   lda #$ed
             jsr kbd_send
 
+            jsr pr_sc
+
             lda leds
             jsr kbd_send
+
+            jsr pr_sc
 
             lda leds
             beq nocaps
 
             ; Print the caps lock prompt
 
+            jsr text.get_xy
+
+            phx
+            phy
+
             ldx #0
-            ldy #3
+            ldy #HOME_Y
             jsr text.set_xy
             
-            ldx #<>prompt2
-            jsr text.puts
+            lda #']'
+            jsr text.put
+
+            ply
+            plx
+            jsr text.set_xy
+
+            bra done
             
 nocaps      ; Print the no caps lock prompt
+            jsr text.get_xy
+            phx
+            phy
+
             ldx #0
-            ldy #3
+            ldy #HOME_Y
             jsr text.set_xy
             
-            ldx #<>prompt
-            jsr text.puts
+            lda #'>'
+            jsr text.put
 
-_done       rts
+            ply
+            plx
+            jsr text.set_xy
+
+done        rts
             .pend
 
 ;
 ; Send a byte to the keyboard
 ;
+; kbd_send    .proc
+;             sta PS2_OUT
+
+;             pha
+;             ldx #<>send_pre
+;             jsr text.puts
+
+;             pla
+;             jsr pr_sc
+;             ldx #<>send_post
+;             jsr text.puts
+
+;             lda #PS2_CTRL_KBD_WR
+;             sta PS2_CTRL
+;             stz PS2_CTRL
+
+; ; _wait       jsr get_sc
+; ;             cmp #0
+; ;             beq _wait
+
+; _done       rts
+;             .pend
+
+;
+; Send a byte to the keyboard
+;
 kbd_send    .proc
+            stz MMU_IO_CTRL
             sta PS2_OUT
 
             lda #PS2_CTRL_KBD_WR
             sta PS2_CTRL
             stz PS2_CTRL
 
-_wait       jsr get_sc
+wait        jsr get_sc
             cmp #0
-            beq _wait
+            beq wait
 
 _done       rts
             .pend
@@ -335,13 +448,6 @@ pr_sc       .proc
 
             jsr pr_hex
 
-            ldx #<>blanks
-            jsr text.puts
-
-            jsr text.get_xy
-            ldx #2
-            jsr text.set_xy
-            
             rts
             .pend
 
@@ -409,5 +515,7 @@ prefix_f0   .null "F0 "
 prefix_e0   .null "E0 "
 greeting    .null "F256 PS/2 Keyboard Test Harness",10,"Press keys to see scan codes:",10,10
 blanks      .null "      "
+send_pre    .null "["
+send_post   .null "] "
 
             .endsection
