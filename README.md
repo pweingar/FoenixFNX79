@@ -51,3 +51,8 @@ For the moment, at least, MON, APP, and MENU keys are assigned to work like the 
    implementation of the protocol.
 1. Adjust logic for the production board (when available).
 1. Create final production version of the firmware.
+
+## Acknowledgements
+
+* Low-level PS/2 code was modified from the ps2dev library for Arduino: https://github.com/harvie/ps2dev.
+* WS2812 (neopixel) code was based on examples provided here: https://www.thevfdcollective.com/blog/stm32-and-sk6812-rgbw-led
