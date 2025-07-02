@@ -519,7 +519,9 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 int ps2_keyboard_handle(uint8_t *leds_) {
 	uint8_t c;  //char stores data received from computer for KBD
 	if(ps2_available()) {
-		if (!ps2_read(&c)) return ps2_keyboard_reply(c, leds_);
+		if (!ps2_read(&c)) {
+			return ps2_keyboard_reply(c, leds_);
+		}
 	}
 	return 0;
 }

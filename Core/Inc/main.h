@@ -60,6 +60,7 @@ void Error_Handler(void);
 /* USER CODE BEGIN EFP */
 
 extern TIM_HandleTypeDef htim1;
+extern DMA_HandleTypeDef hdma_tim1_ch2;
 
 /**
  * Wait for us microseconds
@@ -67,6 +68,14 @@ extern TIM_HandleTypeDef htim1;
  * @param us the number of microseconds to wait
  */
 extern void delayMicroseconds(uint16_t us);
+
+/**
+ * Set whether a status LED is on or off
+ *
+ * @param led the number of the status LED (0 or 1)
+ */
+extern void stat_led_set(short led, bool is_on);
+
 
 /**
  * Set the status LEDs in response to the set LED command (0xed)

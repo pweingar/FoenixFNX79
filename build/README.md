@@ -9,3 +9,4 @@ This folder contains builds for the Foenix FNX-KBD79 PS/2 keyboard.
 | kbd79_a_20250618_3.elf | 2025-06-18 | alpha  | Typematic temporarily disabled.                            |
 | kbd79_a_20250622.elf   | 2025-06-22 | alpha  | Neopixel code re-written and seems to be correct now.      |
 | kbd79_a_20250626.elf   | 2025-06-26 | alpha  | Keyboard repeat added back, various fixes.                 |
+| kbd79_a_20250702.elf   | 2025-07-02 | alpha  | Capslock LED now working with the $ED command.             |

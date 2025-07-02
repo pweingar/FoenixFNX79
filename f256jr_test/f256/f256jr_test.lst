@@ -1,0 +1,456 @@
+
+; 64tass Turbo Assembler Macro V1.59.3120 listing file
+; 64tass --intel-hex -o f256jr_test.hex --list f256jr_test.lst f256jr_test.asm
+; Thu Jun 26 16:47:14 2025
+
+;Offset	;Hex		;Monitor	;Source
+
+;******  Processing input file: f256jr_test.asm
+
+=$d640					PS2_CTRL = $d640
+=$02					PS2_CTRL_KBD_WR = $02
+=$04					PS2_CTRL_MS_WR = $04
+=$10					PS2_CTRL_KBD_CLR = $10
+=$20					PS2_CTRL_MS_CLR = $20
+=$d641					PS2_OUT = $d641
+=$d642					PS2_KBD_IN = $d642
+=$d643					PS2_MS_IN = $d643
+=$d644					PS2_STAT = $d644
+=$80					PS2_STAT_KBD_ACK = $80
+=$40					PS2_STAT_KBD_NAK = $40
+=$20					PS2_STAT_MS_ACK = $20
+=$10					PS2_STAT_MS_NAK = $10
+=$02					PS2_STAT_MS_EMPTY = $02
+=$01					PS2_STAT_KB_EMPTY = $01
+
+;******  Processing file: f256_sections.asm
+
+=$1000					DP_BASE = $1000
+
+;******  Return to file: f256jr_test.asm
+
+
+;******  Processing file: f256_mmu.asm
+
+=$0000					MMU_MEM_CTRL = $0000
+=$0001					MMU_IO_CTRL = $0001
+.2000					go_io_0:
+.2000	48		pha		            pha
+.2001	9c 01 00	stz $0001	            stz MMU_IO_CTRL
+.2004	68		pla		            pla
+.2005	60		rts		            rts
+.2006					go_io_2:
+.2006	48		pha		            pha
+.2007	a9 02		lda #$02	            lda #$02
+.2009	8d 01 00	sta $0001	            sta MMU_IO_CTRL
+.200c	68		pla		            pla
+.200d	60		rts		            rts
+.200e					go_io_3:
+.200e	48		pha		            pha
+.200f	a9 03		lda #$03	            lda #$03
+.2011	8d 01 00	sta $0001	            sta MMU_IO_CTRL
+.2014	68		pla		            pla
+.2015	60		rts		            rts
+
+;******  Return to file: f256jr_test.asm
+
+
+;******  Processing file: f256_text.asm
+
+>d000					mstr_ctrl_0 .byte ?
+>d001					mstr_ctrl_1 .byte ?
+>d002					rsrvd1      .word ?
+>d004					brdr_ctrl   .byte ?
+>d005					brdr_blue   .byte ?
+>d006					brdr_green  .byte ?
+>d007					brdr_red    .byte ?
+>d008					brdr_width  .byte ?
+>d009					brdr_height .byte ?
+>d010					crsr_ctrl   .byte ?
+>d011					crsr_char   .byte ?
+>d012					crsr_x      .word ?
+>d014					crsr_y      .word ?
+>de00					mulu_a      .word ?
+>de02					mulu_b      .word ?
+>de04					divu_den    .word ?
+>de06					divu_num    .word ?
+>de08					add_a       .dword ?
+>de0c					add_b       .dword ?
+>de10					mulu_res    .dword ?
+>de14					quou        .word ?
+>de16					remu        .word ?
+>de18					add_res     .dword ?
+>1000					data_ptr    .word ?
+>1002					line_ptr    .word ?
+>1004					column      .word ?
+>1006					row         .word ?
+>1008					color       .byte ?
+>1009					num_rows    .word ?
+>100b					num_cols    .word ?
+=$c000					TXT_MATRIX = $c000
+=$d800					TXT_CLUT_FG = $d800
+=$d840					TXT_CLUT_BG = $d840
+.2016					get_xy
+.2016	a6 04		ldx $1004	            ldx column
+.2018	a4 06		ldy $1006	            ldy row
+.201a	60		rts		            rts
+.201b					set_xy
+.201b	48		pha		            pha
+.201c	84 06		sty $1006	            sty row
+.201e	86 04		stx $1004	            stx column
+.2020	a9 00		lda #$00	            lda #<TXT_MATRIX
+.2022	85 02		sta $1002	            sta line_ptr
+.2024	a9 c0		lda #$c0	            lda #>TXT_MATRIX
+.2026	85 03		sta $1003	            sta line_ptr+1
+.2028	c0 00 00	cpy #$0000	loop        cpy #0
+.202b	f0 10		beq $203d	            beq done
+.202d	18		clc		            clc
+.202e	a5 02		lda $1002	            lda line_ptr
+.2030	65 0b		adc $100b	            adc num_cols
+.2032	85 02		sta $1002	            sta line_ptr
+.2034	a5 03		lda $1003	            lda line_ptr+1
+.2036	69 00		adc #$00	            adc #0
+.2038	85 03		sta $1003	            sta line_ptr+1
+.203a	88		dey		            dey
+.203b	80 eb		bra $2028	            bra loop
+.203d	68		pla		done        pla
+.203e	60		rts		            rts
+.203f					clr_line
+.203f	5a		phy		            phy
+.2040	a4 04		ldy $1004	            ldy column
+.2042	20 06 20	jsr $2006	loop        jsr mmu.go_io_2
+.2045	a9 20		lda #$20	            lda #' '
+.2047	91 02		sta ($1002),y	            sta (line_ptr),y
+.2049	20 0e 20	jsr $200e	            jsr mmu.go_io_3
+.204c	a5 08		lda $1008	            lda color
+.204e	91 02		sta ($1002),y	            sta (line_ptr),y
+.2050	c8		iny		            iny
+.2051	c4 0b		cpy $100b	            cpy num_cols
+.2053	d0 ed		bne $2042	            bne loop
+.2055	7a		ply		            ply
+.2056	60		rts		            rts
+.2057					clear
+.2057	48		pha		            pha
+.2058	da		phx		            phx
+.2059	5a		phy		            phy
+.205a	a2 00 00	ldx #$0000	            ldx #0
+.205d	a0 00 00	ldy #$0000	            ldy #0
+.2060	20 1b 20	jsr $201b	            jsr set_xy
+.2063	a0 00 00	ldy #$0000	            ldy #0
+.2066	20 06 20	jsr $2006	loop        jsr mmu.go_io_2
+.2069	a9 20		lda #$20	            lda #' '
+.206b	99 00 c0	sta $c000,y	            sta TXT_MATRIX,y
+.206e	20 0e 20	jsr $200e	            jsr mmu.go_io_3
+.2071	a5 08		lda $1008	            lda color
+.2073	99 00 c0	sta $c000,y	            sta TXT_MATRIX,y
+.2076	c8		iny		            iny
+.2077	c0 00 20	cpy #$2000	            cpy #$2000
+.207a	d0 ea		bne $2066	            bne loop
+.207c	7a		ply		            ply
+.207d	fa		plx		            plx
+.207e	68		pla		            pla
+.207f	60		rts		            rts
+.2080					put
+.2080	da		phx		            phx
+.2081	5a		phy		            phy
+.2082	c9 0a		cmp #$0a	            cmp #10
+.2084	d0 0b		bne $2091	            bne not_cr
+.2086	a2 00 00	ldx #$0000	newline     ldx #0
+.2089	a4 06		ldy $1006	            ldy row
+.208b	c8		iny		            iny
+.208c	20 1b 20	jsr $201b	            jsr set_xy
+.208f	80 1c		bra $20ad	            bra done
+.2091	20 06 20	jsr $2006	not_cr      jsr mmu.go_io_2
+.2094	a4 04		ldy $1004	            ldy column
+.2096	91 02		sta ($1002),y	            sta (line_ptr),y
+.2098	20 0e 20	jsr $200e	            jsr mmu.go_io_3
+.209b	a5 08		lda $1008	            lda color
+.209d	91 02		sta ($1002),y	            sta (line_ptr),y
+.209f	c8		iny		            iny
+.20a0	c4 0b		cpy $100b	            cpy num_cols
+.20a2	b0 e2		bcs $2086	            bge newline
+.20a4	84 04		sty $1004	            sty column
+.20a6	a6 04		ldx $1004	            ldx column
+.20a8	a4 06		ldy $1006	            ldy row
+.20aa	20 1b 20	jsr $201b	            jsr set_xy
+.20ad	7a		ply		done        ply
+.20ae	fa		plx		            plx
+.20af	60		rts		            rts
+.20b0					puts
+.20b0	48		pha		            pha
+.20b1	bd 00 00	lda $0000,x	loop        lda 0,x
+.20b4	f0 06		beq $20bc	            beq done
+.20b6	20 80 20	jsr $2080	            jsr put
+.20b9	e8		inx		            inx
+.20ba	80 f5		bra $20b1	            bra loop
+.20bc	68		pla		done        pla
+.20bd	60		rts		            rts
+.20be					setclut
+.20be	20 00 20	jsr $2000	            jsr mmu.go_io_0
+.20c1	a9 00		lda #$00	            lda #0
+.20c3	8d 00 d8	sta $d800	            sta TXT_CLUT_FG
+.20c6	8d 01 d8	sta $d801	            sta TXT_CLUT_FG+1
+.20c9	8d 02 d8	sta $d802	            sta TXT_CLUT_FG+2
+.20cc	8d 40 d8	sta $d840	            sta TXT_CLUT_BG
+.20cf	8d 41 d8	sta $d841	            sta TXT_CLUT_BG+1
+.20d2	8d 42 d8	sta $d842	            sta TXT_CLUT_BG+2
+.20d5	a9 80		lda #$80	            lda #128
+.20d7	8d 08 d8	sta $d808	            sta TXT_CLUT_FG+4*2
+.20da	8d 48 d8	sta $d848	            sta TXT_CLUT_BG+4*2
+.20dd	a9 00		lda #$00	            lda #0
+.20df	8d 09 d8	sta $d809	            sta TXT_CLUT_FG+4*2+1
+.20e2	8d 49 d8	sta $d849	            sta TXT_CLUT_BG+4*2+1
+.20e5	a9 00		lda #$00	            lda #0
+.20e7	8d 0a d8	sta $d80a	            sta TXT_CLUT_FG+4*2+2
+.20ea	8d 4a d8	sta $d84a	            sta TXT_CLUT_BG+4*2+2
+.20ed	a9 ff		lda #$ff	            lda #255
+.20ef	8d 3c d8	sta $d83c	            sta TXT_CLUT_FG+4*15
+.20f2	8d 7c d8	sta $d87c	            sta TXT_CLUT_BG+4*15
+.20f5	8d 3d d8	sta $d83d	            sta TXT_CLUT_FG+4*15+1
+.20f8	8d 7d d8	sta $d87d	            sta TXT_CLUT_BG+4*15+1
+.20fb	8d 3e d8	sta $d83e	            sta TXT_CLUT_FG+4*15+2
+.20fe	8d 7e d8	sta $d87e	            sta TXT_CLUT_BG+4*15+2
+.2101	60		rts		            rts
+.2102					init
+.2102	20 00 20	jsr $2000	            jsr mmu.go_io_0
+.2105	a9 01		lda #$01	            lda #1
+.2107	8d 00 d0	sta $d000	            sta mstr_ctrl_0
+.210a	9c 01 d0	stz $d001	            stz mstr_ctrl_1
+.210d	9c 10 d0	stz $d010	            stz crsr_ctrl
+.2110	9c 04 d0	stz $d004	            stz brdr_ctrl
+.2113	20 be 20	jsr $20be	            jsr setclut
+.2116	a9 f2		lda #$f2	            lda #$f2
+.2118	85 08		sta $1008	            sta color
+.211a	a2 50 00	ldx #$0050	            ldx #80
+.211d	86 0b		stx $100b	            stx num_cols
+.211f	a0 3c 00	ldy #$003c	            ldy #60
+.2122	84 09		sty $1009	            sty num_rows
+.2124	20 57 20	jsr $2057	            jsr clear
+.2127	60		rts		            rts
+
+;******  Return to file: f256jr_test.asm
+
+=10					MAX_SEQUENCE = 10
+=2					HOME_X = 2
+=3					HOME_Y = 3
+=0					STATE_DEFAULT = 0
+=1					STATE_E0 = 1
+=2					STATE_F0 = 2
+=3					STATE_E0F0 = 3
+>100d					state       .byte ?
+>100e					sc_count    .byte ?
+>100f					scancode    .byte ?
+>1010					leds        .byte ?
+>1011					red         .byte ?
+>1012					green       .byte ?
+>1013					blue        .byte ?
+>fffc	28 21				vreset      .word <>start
+.2128	78		sei		start       sei
+.2129	18		clc		            clc
+.212a	fb		xce		            xce
+.212b	c2 20		rep #$20	            rep #$20
+.212d	a9 00 10	lda #$1000	            lda #<>DP_BASE
+.2130	5b		tcd		            tcd
+.2131	e2 20		sep #$20	            sep #$20
+.2133	c2 10		rep #$10	            rep #$10
+.2135	a9 00		lda #$00	            lda #0
+.2137	48		pha		            pha
+.2138	ab		plb		            plb
+.2139	64 0d		stz $100d	            stz state
+.213b	64 0e		stz $100e	            stz sc_count
+.213d	64 10		stz $1010	            stz leds
+.213f	64 11		stz $1011	            stz red
+.2141	64 12		stz $1012	            stz green
+.2143	64 13		stz $1013	            stz blue
+.2145	20 02 21	jsr $2102	            jsr text.init
+.2148	a2 00 00	ldx #$0000	            ldx #0
+.214b	a0 00 00	ldy #$0000	            ldy #0
+.214e	20 1b 20	jsr $201b	            jsr text.set_xy
+.2151	a2 db 22	ldx #$22db	            ldx #<>greeting
+.2154	20 b0 20	jsr $20b0	            jsr text.puts
+.2157	a2 00 00	ldx #$0000	pr_prompt   ldx #0
+.215a	a0 03 00	ldy #$0003	            ldy #HOME_Y
+.215d	20 1b 20	jsr $201b	            jsr text.set_xy
+.2160	20 3f 20	jsr $203f	            jsr text.clr_line
+.2163	64 0e		stz $100e	            stz sc_count
+.2165	a2 cd 22	ldx #$22cd	            ldx #<>prompt
+.2168	20 b0 20	jsr $20b0	            jsr text.puts
+.216b	20 80 22	jsr $2280	loop        jsr get_sc
+.216e	c9 00		cmp #$00	            cmp #0
+.2170	f0 f9		beq $216b	            beq loop
+.2172	85 0f		sta $100f	            sta scancode
+.2174	a5 0d		lda $100d	            lda state
+.2176	f0 0e		beq $2186	            beq st_default
+.2178	c9 01		cmp #$01	            cmp #STATE_E0
+.217a	f0 48		beq $21c4	            beq st_e0
+.217c	c9 02		cmp #$02	            cmp #STATE_F0
+.217e	f0 5f		beq $21df	            beq st_f0
+.2180	c9 03		cmp #$03	            cmp #STATE_E0F0
+.2182	f0 6e		beq $21f2	            beq st_e0f0
+.2184	80 e5		bra $216b	            bra loop
+.2186	a5 0e		lda $100e	st_default  lda sc_count                ; clear the line if we have printed 10 sequences
+.2188	c9 0a		cmp #$0a	            cmp #MAX_SEQUENCE
+.218a	90 0e		bcc $219a	            blt dont_clear
+.218c	a2 02 00	ldx #$0002	            ldx #HOME_X
+.218f	a0 03 00	ldy #$0003	            ldy #HOME_Y
+.2192	20 1b 20	jsr $201b	            jsr text.set_xy
+.2195	20 3f 20	jsr $203f	            jsr text.clr_line
+.2198	64 0e		stz $100e	            stz sc_count
+.219a					dont_clear
+.219a	a5 0f		lda $100f	            lda scancode
+.219c	c9 e0		cmp #$e0	            cmp #$e0
+.219e	d0 0d		bne $21ad	            bne not_e0
+.21a0	a2 d7 22	ldx #$22d7	            ldx #<>prefix_e0
+.21a3	20 b0 20	jsr $20b0	            jsr text.puts
+.21a6	a9 01		lda #$01	            lda #STATE_E0
+.21a8	85 0d		sta $100d	            sta state
+.21aa	4c 6b 21	jmp $216b	            jmp loop
+.21ad	c9 f0		cmp #$f0	not_e0      cmp #$f0
+.21af	d0 0d		bne $21be	            bne not_f0
+.21b1	a2 d3 22	ldx #$22d3	            ldx #<>prefix_f0
+.21b4	20 b0 20	jsr $20b0	            jsr text.puts
+.21b7	a9 02		lda #$02	            lda #STATE_F0
+.21b9	85 0d		sta $100d	            sta state
+.21bb	4c 6b 21	jmp $216b	            jmp loop
+.21be					not_f0
+.21be	20 fc 21	jsr $21fc	            jsr sc_end          ; Print the code and end the sequence
+.21c1	4c 6b 21	jmp $216b	            jmp loop
+.21c4	a5 0f		lda $100f	st_e0       lda scancode
+.21c6	c9 f0		cmp #$f0	            cmp #$f0
+.21c8	d0 0d		bne $21d7	            bne not_e0f0
+.21ca	a2 d3 22	ldx #$22d3	            ldx #<>prefix_f0
+.21cd	20 b0 20	jsr $20b0	            jsr text.puts
+.21d0	a9 03		lda #$03	            lda #STATE_E0F0
+.21d2	85 0d		sta $100d	            sta state
+.21d4	4c 6b 21	jmp $216b	            jmp loop
+.21d7					not_e0f0
+.21d7	20 fc 21	jsr $21fc	            jsr sc_end          ; Print the code and end the sequence
+.21da	64 0d		stz $100d	            stz state           ; Go back to the default state
+.21dc	4c 6b 21	jmp $216b	            jmp loop
+.21df	a5 0f		lda $100f	st_f0       lda scancode
+.21e1	20 fc 21	jsr $21fc	            jsr sc_end          ; Print the code and end the sequence
+.21e4	a5 0f		lda $100f	            lda scancode
+.21e6	c9 58		cmp #$58	            cmp #$58
+.21e8	d0 03		bne $21ed	            bne go_default
+.21ea	20 17 22	jsr $2217	            jsr caps_tog
+.21ed	64 0d		stz $100d	go_default  stz state           ; Go back to the default state
+.21ef	4c 6b 21	jmp $216b	            jmp loop
+.21f2	a5 0f		lda $100f	st_e0f0     lda scancode
+.21f4	20 fc 21	jsr $21fc	            jsr sc_end          ; Print the code and end the sequence
+.21f7	64 0d		stz $100d	            stz state           ; Go back to the default state
+.21f9	4c 6b 21	jmp $216b	            jmp loop
+.21fc					sc_end
+.21fc	20 c0 22	jsr $22c0	            jsr pr_sc           ; Print the scan code
+.21ff	a9 20		lda #$20	            lda #' '
+.2201	20 80 20	jsr $2080	            jsr text.put
+.2204	e6 0e		inc $100e	            inc sc_count        ; Add to the sequence count
+.2206	a5 0e		lda $100e	            lda sc_count
+.2208	c9 0a		cmp #$0a	            cmp #MAX_SEQUENCE
+.220a	f0 0a		beq $2216	            beq done
+.220c	a9 2f		lda #$2f	            lda #'/'            ; Print a sequence end marker
+.220e	20 80 20	jsr $2080	            jsr text.put
+.2211	a9 20		lda #$20	            lda #' '
+.2213	20 80 20	jsr $2080	            jsr text.put
+.2216	60		rts		done        rts
+.2217					caps_tog
+.2217	a5 10		lda $1010	            lda leds
+.2219	f0 04		beq $221f	            beq set_caps
+.221b	64 10		stz $1010	            stz leds
+.221d	80 04		bra $2223	            bra send_caps
+.221f	a9 04		lda #$04	set_caps    lda #$04
+.2221	85 10		sta $1010	            sta leds
+.2223	a9 ed		lda #$ed	send_caps   lda #$ed
+.2225	20 6a 22	jsr $226a	            jsr kbd_send
+.2228	20 c0 22	jsr $22c0	            jsr pr_sc
+.222b	a5 10		lda $1010	            lda leds
+.222d	20 6a 22	jsr $226a	            jsr kbd_send
+.2230	20 c0 22	jsr $22c0	            jsr pr_sc
+.2233	a5 10		lda $1010	            lda leds
+.2235	f0 1a		beq $2251	            beq nocaps
+.2237	20 16 20	jsr $2016	            jsr text.get_xy
+.223a	da		phx		            phx
+.223b	5a		phy		            phy
+.223c	a2 00 00	ldx #$0000	            ldx #0
+.223f	a0 03 00	ldy #$0003	            ldy #HOME_Y
+.2242	20 1b 20	jsr $201b	            jsr text.set_xy
+.2245	a9 5d		lda #$5d	            lda #']'
+.2247	20 80 20	jsr $2080	            jsr text.put
+.224a	7a		ply		            ply
+.224b	fa		plx		            plx
+.224c	20 1b 20	jsr $201b	            jsr text.set_xy
+.224f	80 18		bra $2269	            bra done
+.2251					nocaps
+.2251	20 16 20	jsr $2016	            jsr text.get_xy
+.2254	da		phx		            phx
+.2255	5a		phy		            phy
+.2256	a2 00 00	ldx #$0000	            ldx #0
+.2259	a0 03 00	ldy #$0003	            ldy #HOME_Y
+.225c	20 1b 20	jsr $201b	            jsr text.set_xy
+.225f	a9 3e		lda #$3e	            lda #'>'
+.2261	20 80 20	jsr $2080	            jsr text.put
+.2264	7a		ply		            ply
+.2265	fa		plx		            plx
+.2266	20 1b 20	jsr $201b	            jsr text.set_xy
+.2269	60		rts		done        rts
+.226a					kbd_send
+.226a	9c 01 00	stz $0001	            stz MMU_IO_CTRL
+.226d	8d 41 d6	sta $d641	            sta PS2_OUT
+.2270	a9 02		lda #$02	            lda #PS2_CTRL_KBD_WR
+.2272	8d 40 d6	sta $d640	            sta PS2_CTRL
+.2275	9c 40 d6	stz $d640	            stz PS2_CTRL
+.2278	20 80 22	jsr $2280	wait        jsr get_sc
+.227b	c9 00		cmp #$00	            cmp #0
+.227d	f0 f9		beq $2278	            beq wait
+.227f	60		rts		_done       rts
+.2280					get_sc
+.2280	5a		phy		            phy
+.2281	a0 64 00	ldy #$0064	            ldy #100
+.2284	9c 01 00	stz $0001	            stz MMU_IO_CTRL
+.2287	ad 44 d6	lda $d644	_wait       lda PS2_STAT
+.228a	29 01		and #$01	            and #PS2_STAT_KB_EMPTY
+.228c	c9 01		cmp #$01	            cmp #PS2_STAT_KB_EMPTY
+.228e	d0 07		bne $2297	            bne _ready
+.2290	88		dey		            dey
+.2291	d0 f4		bne $2287	            bne _wait
+.2293	a9 00		lda #$00	            lda #0
+.2295	80 05		bra $229c	            bra _done
+.2297	ad 42 d6	lda $d642	_ready      lda PS2_KBD_IN
+.229a	85 0f		sta $100f	            sta scancode
+.229c	7a		ply		_done       ply
+.229d	60		rts		            rts
+.229e					pr_hex
+.229e	48		pha		            pha
+.229f	c2 20		rep #$20	            rep #$20
+.22a1	29 0f 00	and #$000f	            and #$000f
+.22a4	a8		tay		            tay
+.22a5	e2 20		sep #$20	            sep #$20
+.22a7	b9 af 22	lda $22af,y	            lda hex_digits,y
+.22aa	20 80 20	jsr $2080	            jsr text.put
+.22ad	68		pla		            pla
+.22ae	60		rts		            rts
+>22af	30 31 32 33 34 35 36 37		hex_digits  .null "0123456789ABCDEF"
+>22b7	38 39 41 42 43 44 45 46 00
+.22c0					pr_sc
+.22c0	48		pha		            pha
+.22c1	4a		lsr a		            lsr a
+.22c2	4a		lsr a		            lsr a
+.22c3	4a		lsr a		            lsr a
+.22c4	4a		lsr a		            lsr a
+.22c5	20 9e 22	jsr $229e	            jsr pr_hex
+.22c8	68		pla		            pla
+.22c9	20 9e 22	jsr $229e	            jsr pr_hex
+.22cc	60		rts		            rts
+>22cd	3e 20 00			prompt      .null "> "
+>22d0	5d 20 00			prompt2     .null "] "
+>22d3	46 30 20 00			prefix_f0   .null "F0 "
+>22d7	45 30 20 00			prefix_e0   .null "E0 "
+>22db	46 32 35 36 20 50 53 2f		greeting    .null "F256 PS/2 Keyboard Test Harness",10,"Press keys to see scan codes:",10,10
+>22e3	32 20 4b 65 79 62 6f 61 72 64 20 54 65 73 74 20
+>22f3	48 61 72 6e 65 73 73 0a 50 72 65 73 73 20 6b 65
+>2303	79 73 20 74 6f 20 73 65 65 20 73 63 61 6e 20 63
+>2313	6f 64 65 73 3a 0a 0a 00
+>231b	20 20 20 20 20 20 00		blanks      .null "      "
+>2322	5b 00				send_pre    .null "["
+>2324	5d 20 00			send_post   .null "] "
+
+;******  End of listing

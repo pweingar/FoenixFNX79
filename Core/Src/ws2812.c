@@ -68,6 +68,7 @@ static pixel_rgb_t pixel[NUM_PIXELS];
 static uint32_t dma_buffer[WRITE_BUF_LEN];
 static short dma_led_index = 0; // led_dma_index
 static bool ws2812_needs_update = false;
+volatile bool ws2812_dma_running = false;
 
 //
 // Code
@@ -145,9 +146,9 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
 			buffer = ws2812_buffer_byte(buffer, pixel[dma_led_index].b);
 
 		} else {
-			for (uint8_t i = 0; i < WRITE_BUF_LEN / 2; i++) {
-				buffer[i] = 0;
-			}
+			buffer = ws2812_buffer_byte(buffer, 0);
+			buffer = ws2812_buffer_byte(buffer, 0);
+			buffer = ws2812_buffer_byte(buffer, 0);
 		}
 
 		dma_led_index++;
@@ -165,6 +166,8 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
 
 	} else {
 		HAL_TIM_PWM_Stop_DMA(htim, TIM_CHANNEL_2);
+		ws2812_dma_running = false;
+		stat_led_set(0, false);
 	}
 }
 
@@ -183,11 +186,9 @@ void HAL_TIM_PWM_PulseFinishedHalfCpltCallback(TIM_HandleTypeDef *htim) {
 			buffer = ws2812_buffer_byte(buffer, pixel[dma_led_index].b);
 
 		} else {
-			for (uint8_t i = 0; i < WRITE_BUF_LEN / 2; i++) {
-				buffer = ws2812_buffer_byte(buffer, 0);
-				buffer = ws2812_buffer_byte(buffer, 0);
-				buffer = ws2812_buffer_byte(buffer, 0);
-			}
+			buffer = ws2812_buffer_byte(buffer, 0);
+			buffer = ws2812_buffer_byte(buffer, 0);
+			buffer = ws2812_buffer_byte(buffer, 0);
 		}
 
 		dma_led_index++;
@@ -207,20 +208,26 @@ void HAL_TIM_PWM_PulseFinishedHalfCpltCallback(TIM_HandleTypeDef *htim) {
  * Update the physical LEDs with the set colors
  */
 void ws2812_update() {
-	if (ws2812_needs_update) {
-		ws2812_needs_update = false;
+	if (!ws2812_dma_running) {
+		if (ws2812_needs_update) {
+			ws2812_needs_update = false;
+			ws2812_dma_running = true;
+			stat_led_set(0, true);
 
-		// Fill the DMA buffer with NIL to force a reset
-		for (short i = 0; i < WRITE_BUF_LEN; i++) {
-			dma_buffer[i] = 0;
+			// Fill the DMA buffer with NIL to force a reset
+			for (short i = 0; i < WRITE_BUF_LEN; i++) {
+				dma_buffer[i] = 0;
+			}
+
+			// We'll send 10 pixels' worth of NILs, which should be enough to be seen as a RESET
+			dma_led_index = -10;
+
+			// Start the DMA
+			HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t *)dma_buffer, WRITE_BUF_LEN);
 		}
-
-		// We'll send 10 pixels' worth of NILs, which should be enough to be seen as a RESET
-		dma_led_index = -10;
-
-		// Start the DMA
-		HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t *)dma_buffer, WRITE_BUF_LEN);
 	}
+
+	while (ws2812_dma_running) ;
 }
 
 /**
@@ -233,10 +240,12 @@ void ws2812_dim(long millis, long max) {
 	if (millis < max) {
 		float factor = (float)(max - millis) / (float)max;
 		for (short i = 1; i < NUM_PIXELS; i++) {
-			ws2812_set_color(i,
-					(int)(led_defaults[i].r * factor),
-					(int)(led_defaults[i].g * factor),
-					(int)(led_defaults[i].b * factor));
+			if (i != LED_CAPS) {
+				ws2812_set_color(i,
+						(int)(led_defaults[i].r * factor),
+						(int)(led_defaults[i].g * factor),
+						(int)(led_defaults[i].b * factor));
+			}
 		}
 	} else {
 		for (short i = 1; i < NUM_PIXELS; i++) {

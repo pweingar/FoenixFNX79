@@ -76,8 +76,8 @@ const uint8_t PS2_STAT_MEDIA2 = 0x40;
 #define NUM_ROWS 		6
 #define NUM_COLUMNS		16
 
-const short HEARTBEAT_PERIOD = 10;	// Number of milliseconds per heart beat
-const uint8_t HEARTBEAT_CNT = 10;	// Number of counts of the heart beat before we toggle the LED
+const short HEARTBEAT_PERIOD = 1;	// Number of milliseconds per heart beat
+const uint8_t HEARTBEAT_CNT = 100;	// Number of counts of the heart beat before we toggle the LED
 const uint8_t DEBOUNCE_CNT = 2;		// Number of times through a loop to verify the switch isn't bouncing
 
 const uint8_t KEY_PRESSED = 0x80;
@@ -275,7 +275,12 @@ void stat_led_set(short led, bool is_on) {
  * @param status the bitfield for all the status LEDs
  */
 void ps2_set_leds(uint8_t status) {
-	ws2812_set_state(LED_CAPS, ((status & PS2_STAT_CAPS) != 0));
+	if ((status & 0x04) == 0x04) {
+		ws2812_set_state(LED_CAPS, true);
+	} else {
+		ws2812_set_state(LED_CAPS, false);
+	}
+
 	ws2812_trigger();
 }
 
@@ -668,10 +673,7 @@ int main(void)
 	  // Check for commands from the host...
 	  old_modifier_leds = modifier_leds;
 	  ps2_keyboard_handle(&modifier_leds);
-	  if (modifier_leds != old_modifier_leds) {
-		  // If the command was issued to change the LEDs, update the RGB leds
-		  ps2_set_leds(modifier_leds);
-	  }
+
 
 	  // Check for changes to key presses in the key matrix
 	  // Issue messages to the host for any changes
@@ -696,15 +698,18 @@ int main(void)
 		  break;
 
 	  default:
+		  if (modifier_leds != old_modifier_leds) {
+			  // If the command was issued to change the LEDs, update the RGB leds
+			  ps2_set_leds(modifier_leds);
+		  }
 		  break;
 	  }
-
-	  // Send the changes to the RGB LEDs out to the WS2812s
-	  ws2812_update();
 
 	  // Flash the status LEDs to indicate that this main loop is still running
 	  heart_beat();
 
+	  // Send the changes to the RGB LEDs out to the WS2812s
+	  ws2812_update();
   }
   /* USER CODE END 3 */
 }
