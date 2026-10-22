@@ -155,11 +155,9 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
 
 	} else if (dma_led_index < NUM_PIXELS + 2) {
 		// Last two transfers are resets. 64 * 1.25 us = 80 us == good enough reset
-		// First half reset zero fill
+		// Second half reset zero fill (0 duty cycle holds the line low)
 		for (uint8_t i = 0; i < WRITE_BUF_LEN / 2; i++) {
-			buffer = ws2812_buffer_byte(buffer, 0);
-			buffer = ws2812_buffer_byte(buffer, 0);
-			buffer = ws2812_buffer_byte(buffer, 0);
+			buffer[i] = 0;
 		}
 
 		dma_led_index++;

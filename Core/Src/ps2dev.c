@@ -24,6 +24,7 @@
 
 #include "ps2dev.h"
 #include "main.h"
+#include "ws2812.h"
 
 //Enable serial debug mode?
 //#define _PS2DBG Serial
@@ -379,7 +380,6 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			ps2_keyboard_scan_code_set(2);
 			kbd_set_enable(true);
 			*leds_ = 0;
-			ps2_ack();
 			//the while loop lets us wait for the host to be ready
 			while (ps2_write(0xFA) != 0) delay(1); //send ACK
 			while (ps2_write(0xAA) != 0) delay(1); // send BAT_SUCCESS
@@ -464,6 +464,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 						ps2_ack();
 						if (!ps2_read(&blue)) {
 							ws2812_set_color(led_index, red, green, blue);
+							ws2812_trigger();
 							ps2_ack();
 						}
 					}
@@ -477,6 +478,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			ps2_ack();
 			if(!ps2_read(&led_index)) {
 				ws2812_set_state(led_index, true);
+				ws2812_trigger();
 				ps2_ack();
 			}
 			break;
@@ -487,6 +489,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			ps2_ack();
 			if(!ps2_read(&led_index)) {
 				ws2812_set_state(led_index, false);
+				ws2812_trigger();
 				ps2_ack();
 			}
 			break;
@@ -599,7 +602,7 @@ int ps2_keyboard_release_special(uint8_t code)
 	do {
 		if (scan_code_set == 1) {
 			if (ps2_do_write(0xe0) == EABORT) continue;
-			if (ps2_do_write(code & 0x80) == EABORT) continue;
+			if (ps2_do_write(code | 0x80) == EABORT) continue;
 
 		} else {
 			if (ps2_do_write(0xe0) == EABORT) continue;
