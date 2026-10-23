@@ -114,6 +114,7 @@ static int _ps2data_out;
 static bool handling_io_abort;
 static uint8_t leds;
 static short scan_code_set;
+static uint8_t last_byte_sent = 0xFA;	// last byte successfully sent to the host (for 0xFE resend)
 
 /*
  * according to some code I saw, these functions will
@@ -163,6 +164,7 @@ void delay(int ms) {
 int ps2_write(uint8_t data) {
 	uint8_t i;
 	uint8_t parity = 1;
+	const uint8_t sent_byte = data;
 
 #ifdef _PS2DBG
 	_PS2DBG.print(F("sending "));
@@ -228,6 +230,8 @@ int ps2_write(uint8_t data) {
 	delayMicroseconds(CLKHALF);
 
 	delayMicroseconds(BYTEWAIT);
+
+	last_byte_sent = sent_byte;
 
 #ifdef _PS2DBG
 	_PS2DBG.print(F("sent "));
@@ -365,6 +369,14 @@ void ps2_ack() {
 	return;
 }
 
+// Send 0xFE (resend): tell the host its last command was invalid or garbled
+void ps2_resend() {
+	delayMicroseconds(BYTE_INTERVAL_MICROS);
+	ps2_write(0xFE);
+	delayMicroseconds(BYTE_INTERVAL_MICROS);
+	return;
+}
+
 int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 	uint8_t val = 0;
 	uint8_t led_index = 0;
@@ -385,8 +397,10 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			while (ps2_write(0xAA) != 0) delay(1); // send BAT_SUCCESS
 			break;
 
-		case 0xFE: //resend
-			ps2_ack();
+		case 0xFE: //resend: retransmit the last byte sent (no ACK)
+			delayMicroseconds(BYTE_INTERVAL_MICROS);
+			ps2_write(last_byte_sent);
+			delayMicroseconds(BYTE_INTERVAL_MICROS);
 			break;
 
 		case 0xF6: //set defaults
@@ -448,6 +462,9 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 					} else {
 						ps2_do_write(0x41);
 					}
+				} else {
+					// Unsupported scan code set (e.g. 3)
+					ps2_resend();
 				}
 			}
 			break;
@@ -514,6 +531,10 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 #endif
 			*leds_ = leds;
 			return 1;
+			break;
+
+		default: //unknown command: ask the host to resend
+			ps2_resend();
 			break;
 	}
 	return 0;
