@@ -53,6 +53,7 @@
 #define EABORT		-1
 #define ETIMEOUT	-2
 #define ECANCEL		-3
+#define EPARITY		-4	// byte from host failed the parity or stop bit check (0xFE already sent)
 
 const uint8_t keyboard_type = 0xf0;
 
@@ -256,6 +257,8 @@ int ps2_available() {
 	return ((digitalRead(_ps2data_in) == LOW) || (digitalRead(_ps2clk_in) == LOW) );
 }
 
+void ps2_resend(void);
+
 int ps2_read(uint8_t * value) {
 	unsigned int data = 0x00;
 	unsigned int bit = 0x01;
@@ -318,6 +321,23 @@ int ps2_read(uint8_t * value) {
 	gohi(_ps2clk_out);
 	delayMicroseconds(CLKHALF);
 
+	// The host releases the data line for the stop bit, so it should now read high.
+	bool stop_ok = (digitalRead(_ps2data_in) == HIGH);
+	if (!stop_ok) {
+		// Framing error. Like the original IBM keyboards, keep clocking (but only
+		// for a bounded number of clocks) until the host releases the data line,
+		// so that the ACK below lands on the right clock.
+		for (uint8_t extra = 0; extra < 8 && digitalRead(_ps2data_in) == LOW; extra++) {
+			delayMicroseconds(CLKHALF);
+			golo(_ps2clk_out);
+			delayMicroseconds(CLKFULL);
+			gohi(_ps2clk_out);
+			delayMicroseconds(CLKHALF);
+			if (digitalRead(_ps2clk_in) == LOW) { /* I/O request from host */
+				return EABORT;
+			}
+		}
+	}
 
 	delayMicroseconds(CLKHALF);
 	golo(_ps2data_out);
@@ -338,11 +358,14 @@ int ps2_read(uint8_t * value) {
 	_PS2DBG.print(F(" calculated parity "));
 	_PS2DBG.println(received_parity,BIN);
 #endif
-	if (received_parity == calculated_parity) {
+	if ((received_parity == calculated_parity) && stop_ok) {
 		return ENOERR;
-	} else {
-		return ECANCEL;
 	}
+
+	// Parity or framing error: the frame itself was acknowledged on the line above,
+	// but the byte is bad, so ask the host to send it again.
+	ps2_resend();
+	return EPARITY;
 }
 
 int ps2_do_read(uint8_t * value) {
@@ -375,6 +398,18 @@ void ps2_resend() {
 	ps2_write(0xFE);
 	delayMicroseconds(BYTE_INTERVAL_MICROS);
 	return;
+}
+
+// Read a command parameter byte. If it arrives corrupted, ps2_read() has already
+// asked the host to resend it, so read again (a few times) instead of giving up
+// and letting the resent byte be mistaken for a new command.
+static int ps2_read_param(uint8_t * value) {
+	int ret;
+	uint8_t attempts = 3;
+	do {
+		ret = ps2_read(value);
+	} while (ret == EPARITY && --attempts);
+	return ret;
 }
 
 int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
@@ -426,7 +461,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 
 		case 0xF3: //set typematic rate
 			ps2_ack();
-			if (!ps2_read(&val)) {
+			if (!ps2_read_param(&val)) {
 				// Extract the delay and repeat codes from the parameter byte
 				// And convert them to delays in milliseconds
 				delay_ms = ps2_delay_ms[(val >> 5) & 0x03];
@@ -451,7 +486,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 
 		case 0xF0: //set scan code set
 			ps2_ack();
-			if (!ps2_read(&val)) {
+			if (!ps2_read_param(&val)) {
 				if ((val == 1) || (val == 2)) {
 					ps2_keyboard_scan_code_set(val);
 					ps2_ack();
@@ -473,13 +508,13 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			// FNXKBD-79 only: set RGB LED color
 			// Parameters: LED#, RED, GREEN, BLUE
 			ps2_ack();
-			if (!ps2_read(&led_index)) {
+			if (!ps2_read_param(&led_index)) {
 				ps2_ack();
-				if (!ps2_read(&red)) {
+				if (!ps2_read_param(&red)) {
 					ps2_ack();
-					if (!ps2_read(&green)) {
+					if (!ps2_read_param(&green)) {
 						ps2_ack();
-						if (!ps2_read(&blue)) {
+						if (!ps2_read_param(&blue)) {
 							ws2812_set_color(led_index, red, green, blue);
 							ws2812_trigger();
 							ps2_ack();
@@ -493,7 +528,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			// FNXKBD-79 only: turn RGB LED on
 			// Parameters: LED#
 			ps2_ack();
-			if(!ps2_read(&led_index)) {
+			if(!ps2_read_param(&led_index)) {
 				ws2812_set_state(led_index, true);
 				ws2812_trigger();
 				ps2_ack();
@@ -504,7 +539,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			// FNXKBD-79 only: turn RGB LED off
 			// Parameters: LED#
 			ps2_ack();
-			if(!ps2_read(&led_index)) {
+			if(!ps2_read_param(&led_index)) {
 				ws2812_set_state(led_index, false);
 				ws2812_trigger();
 				ps2_ack();
@@ -521,7 +556,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 		case 0xED: //set/reset LEDs
 			//ack();
 			while (ps2_write(0xFA) != 0) delay(1);
-			if(!ps2_read(&leds)) {
+			if(!ps2_read_param(&leds)) {
 				ps2_write(0xFA);
 			}
 #ifdef _PS2DBG
