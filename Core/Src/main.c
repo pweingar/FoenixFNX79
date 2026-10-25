@@ -733,6 +733,10 @@ int main(void)
 		  for (short i = 1; i < 12; i++) {
 			  ws2812_set_state(i, false);
 		  }
+		  // The intro leaves the CAPS LED lit and then the loop above turns it off. Show what
+		  // the host last asked for instead: a set-LEDs command can arrive while the intro is
+		  // running (e.g. from the BIOS at power-on), and would otherwise be lost.
+		  ps2_set_leds(modifier_leds);
 		  ws2812_intro_state = 0;
 		  ws2812_trigger();
 		  break;
