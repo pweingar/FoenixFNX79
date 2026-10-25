@@ -90,6 +90,12 @@ extern void ps2_set_leds(uint8_t status);
 extern long millis();
 
 /**
+ * Tell the independent watchdog that the firmware is still alive.
+ * Call it at least once every ~0.5 s, including from any bounded wait.
+ */
+extern void watchdog_refresh(void);
+
+/**
  * Set whether or not keyboard scanning is enabled
  *
  * @param enable true if the keyboard scanning should be enabled, false otherwise

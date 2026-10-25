@@ -53,9 +53,12 @@
 #define EABORT		-1
 #define ETIMEOUT	-2
 #define ECANCEL		-3
+// Longest we keep retrying a send while the host holds off the bus (ms)
+#define PS2_SEND_TIMEOUT_MS	100
+
 #define EPARITY		-4	// byte from host failed the parity or stop bit check (0xFE already sent)
 
-const uint8_t keyboard_type = 0xf0;
+const uint8_t keyboard_type = 0x83;
 
 const uint8_t keyboard_version = 0x01;
 
@@ -257,6 +260,14 @@ int ps2_available() {
 	return ((digitalRead(_ps2data_in) == LOW) || (digitalRead(_ps2clk_in) == LOW) );
 }
 
+// True while a send sequence may keep retrying: not while we are already servicing a
+// host command from inside a retry, and not for longer than PS2_SEND_TIMEOUT_MS.
+// Called on every retry, so it also keeps the watchdog fed during the (bounded) wait.
+static bool ps2_retry_more(uint32_t start) {
+	watchdog_refresh();
+	return !handling_io_abort && ((uint32_t)millis() - start) < PS2_SEND_TIMEOUT_MS;
+}
+
 void ps2_resend(void);
 
 int ps2_read(uint8_t * value) {
@@ -400,6 +411,21 @@ void ps2_resend() {
 	return;
 }
 
+// Send a byte, retrying while the host holds off the bus, but give up after
+// PS2_SEND_TIMEOUT_MS instead of waiting forever. Returns ENOERR or EABORT.
+static int ps2_write_wait(uint8_t data) {
+	uint32_t start = (uint32_t)millis();
+	int ret;
+	while ((ret = ps2_write(data)) != ENOERR) {
+		if (((uint32_t)millis() - start) >= PS2_SEND_TIMEOUT_MS) {
+			break;
+		}
+		watchdog_refresh();
+		delay(1);
+	}
+	return ret;
+}
+
 // Read a command parameter byte. If it arrives corrupted, ps2_read() has already
 // asked the host to resend it, so read again (a few times) instead of giving up
 // and letting the resent byte be mistaken for a new command.
@@ -428,8 +454,8 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			kbd_set_enable(true);
 			*leds_ = 0;
 			//the while loop lets us wait for the host to be ready
-			while (ps2_write(0xFA) != 0) delay(1); //send ACK
-			while (ps2_write(0xAA) != 0) delay(1); // send BAT_SUCCESS
+			ps2_write_wait(0xFA); //send ACK
+			ps2_write_wait(0xAA); // send BAT_SUCCESS
 			break;
 
 		case 0xFE: //resend: retransmit the last byte sent (no ACK)
@@ -475,13 +501,14 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 
 		case 0xF2: //get device id
 			ps2_ack();
+			uint32_t retry_start0 = (uint32_t)millis();
 			do {
 				// ensure ID gets written, some hosts may be sensitive
 				if (ps2_do_write(0xAB) == EABORT) continue;
 				// this is critical for combined ports (they decide mouse/kb on this)
 				if (ps2_do_write(keyboard_type) == EABORT) continue;
 				break;
-			} while (!handling_io_abort);
+			} while (ps2_retry_more(retry_start0));
 			break;
 
 		case 0xF0: //set scan code set
@@ -555,7 +582,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 
 		case 0xED: //set/reset LEDs
 			//ack();
-			while (ps2_write(0xFA) != 0) delay(1);
+			ps2_write_wait(0xFA);
 			if(!ps2_read_param(&leds)) {
 				ps2_write(0xFA);
 			}
@@ -599,15 +626,17 @@ void ps2_keyboard_scan_code_set(short set) {
 // Presses then releases one of the non-special characters
 int ps2_keyboard_mkbrk(uint8_t code)
 {
+	uint32_t retry_start1 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(code) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start1));
+	uint32_t retry_start2 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xF0) == EABORT) continue;
 		if (ps2_do_write(code) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start2));
 
   return 0;
 }
@@ -615,10 +644,11 @@ int ps2_keyboard_mkbrk(uint8_t code)
 // Presses one of the non-special characters
 int ps2_keyboard_press(uint8_t code)
 {
+	uint32_t retry_start3 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(code) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start3));
 
 	return 0;
 }
@@ -626,6 +656,7 @@ int ps2_keyboard_press(uint8_t code)
 // Releases one of the non-special characters
 int ps2_keyboard_release(uint8_t code)
 {
+	uint32_t retry_start4 = (uint32_t)millis();
 	do {
 		if (scan_code_set == 1) {
 			if (ps2_do_write(code | 0x80) == EABORT) continue;
@@ -635,7 +666,7 @@ int ps2_keyboard_release(uint8_t code)
 			if (ps2_do_write(code) == EABORT) continue;
 		}
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start4));
 
 	return 0;
 }
@@ -643,11 +674,12 @@ int ps2_keyboard_release(uint8_t code)
 // Presses one of the special characters
 int ps2_keyboard_press_special(uint8_t code)
 {
+	uint32_t retry_start5 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xe0) == EABORT) continue;
 		if (ps2_do_write(code) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start5));
 
 	return 0;
 }
@@ -655,6 +687,7 @@ int ps2_keyboard_press_special(uint8_t code)
 // Releases one of the special characters
 int ps2_keyboard_release_special(uint8_t code)
 {
+	uint32_t retry_start6 = (uint32_t)millis();
 	do {
 		if (scan_code_set == 1) {
 			if (ps2_do_write(0xe0) == EABORT) continue;
@@ -666,7 +699,7 @@ int ps2_keyboard_release_special(uint8_t code)
 			if (ps2_do_write(code) == EABORT) continue;
 		}
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start6));
 
 	return 0;
 }
@@ -674,17 +707,19 @@ int ps2_keyboard_release_special(uint8_t code)
 // Presses then releases one of the special characters
 int ps2_keyboard_special_mkbrk(uint8_t code)
 {
+	uint32_t retry_start7 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xe0) == EABORT) continue;
 		if (ps2_do_write(code) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start7));
+	uint32_t retry_start8 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xe0) == EABORT) continue;
 		if (ps2_do_write(0xf0) == EABORT) continue;
 		if (ps2_do_write(code) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start8));
 
 	return 0;
 }
@@ -692,13 +727,14 @@ int ps2_keyboard_special_mkbrk(uint8_t code)
 // Presses Printscreen
 int ps2_keyboard_press_printscreen()
 {
+	uint32_t retry_start9 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xe0) == EABORT) continue;
 		if (ps2_do_write(0x12) == EABORT) continue;
 		if (ps2_do_write(0xe0) == EABORT) continue;
 		if (ps2_do_write(0x7c) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start9));
 
 
 	return 0;
@@ -707,6 +743,7 @@ int ps2_keyboard_press_printscreen()
 // Releases Printscreen
 int ps2_keyboard_release_printscreen()
 {
+	uint32_t retry_start10 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xe0) == EABORT) continue;
 		if (ps2_do_write(0xf0) == EABORT) continue;
@@ -715,7 +752,7 @@ int ps2_keyboard_release_printscreen()
 		if (ps2_do_write(0xf0) == EABORT) continue;
 		if (ps2_do_write(0x12) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start10));
 
 	return 0;
 }
@@ -732,12 +769,14 @@ int ps2_keyboard_mkbrk_printscreen()
 // Presses/Releases Pause/Break
 int ps2_keyboard_pausebreak()
 {
+	uint32_t retry_start11 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xe1) == EABORT) continue;
 		if (ps2_do_write(0x14) == EABORT) continue;
 		if (ps2_do_write(0x77) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start11));
+	uint32_t retry_start12 = (uint32_t)millis();
 	do {
 		if (ps2_do_write(0xe1) == EABORT) continue;
 		if (ps2_do_write(0xf0) == EABORT) continue;
@@ -745,7 +784,7 @@ int ps2_keyboard_pausebreak()
 		if (ps2_do_write(0xe0) == EABORT) continue;
 		if (ps2_do_write(0x77) == EABORT) continue;
 		break;
-	} while (!handling_io_abort);
+	} while (ps2_retry_more(retry_start12));
 
 	return 0;
 }

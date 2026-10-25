@@ -33,6 +33,9 @@ typedef struct pixel_rgb_s {
 #define BYTE_PER_PIXEL	(3)
 #define WRITE_BUF_LEN	(NUM_PIXELS * BYTE_PER_PIXEL * 2)
 
+// An update takes about 1 ms; give up on the DMA if it takes much longer than that
+#define WS2812_UPDATE_TIMEOUT_MS	10
+
 
 // WS2812 duty cycle timing constants for 0 and 1
 const uint8_t NEOPIXEL_ZERO = 12;
@@ -225,7 +228,18 @@ void ws2812_update() {
 		}
 	}
 
-	while (ws2812_dma_running) ;
+	// Wait for the transfer to finish (about 1 ms), but don't hang if the DMA stalls
+	uint32_t start = HAL_GetTick();
+	while (ws2812_dma_running) {
+		if ((HAL_GetTick() - start) > WS2812_UPDATE_TIMEOUT_MS) {
+			// Stalled: stop the DMA, and try the update again next time round
+			HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_2);
+			ws2812_dma_running = false;
+			ws2812_needs_update = true;
+			stat_led_set(0, false);
+			break;
+		}
+	}
 }
 
 /**

@@ -196,7 +196,7 @@ uint8_t p_key_state[NUM_KEYS];
 
 uint8_t led0_state = 0;					// State of LED0 (0 = off, 1 == on)
 
-long millisecond_count = 0;
+volatile long millisecond_count = 0;	// updated in the TIM16 interrupt
 
 int	heartbeat_count = 0;				// Count of loops for the heart beat LED
 
@@ -243,6 +243,41 @@ void delayMicroseconds(uint16_t us) {
  */
 long millis() {
 	return millisecond_count;
+}
+
+//
+// Watchdog
+//
+// The independent watchdog (IWDG) resets the MCU if the main loop (or one of the bounded
+// waits in the PS/2 and LED code) stops calling watchdog_refresh(). That covers lock-ups
+// such as a stalled DMA transfer, a stuck wait loop, Error_Handler() or a fault handler.
+//
+// The IWDG runs from the ~40 kHz LSI (30-60 kHz over voltage and temperature):
+// 40 kHz / 64 = 625 Hz, so a reload of 625 is about 1 s (roughly 0.7 s to 1.3 s).
+//
+#define WATCHDOG_RELOAD	625
+
+static void watchdog_init(void) {
+	// Stop the watchdog counting while the core is halted by the debugger,
+	// otherwise every breakpoint would end in a reset
+	__HAL_RCC_DBGMCU_CLK_ENABLE();
+	__HAL_DBGMCU_FREEZE_IWDG();
+
+	IWDG->KR = 0xCCCC;			// start the watchdog (this also starts the LSI)
+	IWDG->KR = 0x5555;			// unlock PR and RLR
+	IWDG->PR = IWDG_PR_PR_2;	// prescaler /64
+	IWDG->RLR = WATCHDOG_RELOAD;
+
+	// Wait for the new values to be latched (bounded: the watchdog is already running)
+	uint32_t start = HAL_GetTick();
+	while (IWDG->SR != 0 && (HAL_GetTick() - start) < 50) {
+	}
+
+	IWDG->KR = 0xAAAA;			// load the counter
+}
+
+void watchdog_refresh(void) {
+	IWDG->KR = 0xAAAA;
 }
 
 //
@@ -641,6 +676,9 @@ int main(void)
   ps2_init(GPIOA, PS2_CLK_IN_Pin, PS2_DATA_IN_Pin, GPIOA, PS2_CLK_OUT_Pin, PS2_DATA_OUT_Pin);
   ps2_keyboard_init();
 
+  // Everything is initialized: from here on the main loop must keep the watchdog fed
+  watchdog_init();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -650,6 +688,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+	  watchdog_refresh();
 
 	  HAL_Delay(HEARTBEAT_PERIOD);
 
@@ -1034,6 +1074,8 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  // Interrupts are off and the watchdog is no longer refreshed, so once the
+  // watchdog is running it resets the MCU instead of leaving the keyboard dead.
   __disable_irq();
   while (1)
   {
