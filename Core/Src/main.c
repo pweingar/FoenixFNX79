@@ -85,6 +85,10 @@ const uint8_t KEY_NO_MAKE = 0x40;
 const uint8_t KEY_NO_BREAK = 0x20;
 const uint8_t KEY_NO_REPEAT	= 0x10;
 
+// Marks "no key is repeating" in last_pressed. Matrix position 0 is a real key (ESC),
+// and positions never get above 0x5F, so 0xFF can't be confused with a key.
+#define NO_KEY			0xFF
+
 const uint8_t KEY_ACK = 0xFA;
 const uint8_t KEY_RESEND = 0xFE;
 
@@ -181,7 +185,7 @@ volatile short send_repeat;				// Flag to indicate if the main loop should send 
 
 long delay_initial;						// Delay while a key is held down before it starts repeating (in ms)
 long delay_repeat;						// Delay between repeats for the held down key (in ms)
-uint8_t last_pressed;					// The scan code of the last (and currently) pressed key
+uint8_t last_pressed;					// The matrix position of the last (and currently) pressed key, or NO_KEY
 
 uint8_t is_scan_disabled = 0;			// Scanning is disabled if this is TRUE
 
@@ -339,7 +343,7 @@ void clr_rows() {
  * @param assert TRUE (non-zero) to assert the pin, FALSE (0) to de-assert it
  */
 void set_row(short row, short assert_row) {
-	if ((row >= 0) || (row <= 5)) {
+	if ((row >= 0) && (row < NUM_ROWS)) {
 		if (assert_row) {
 			// Assert the row by lowering its pin
 			HAL_GPIO_WritePin(((GPIO_TypeDef *)row_port[row]), row_pin[row], GPIO_PIN_SET);
@@ -361,7 +365,7 @@ void set_row(short row, short assert_row) {
  * @retval TRUE (non-zero) if the column is asserted, FALSE (0) if not
  */
 int is_column_asserted(short column) {
-	if ((column >= 0) || (column <= 15)) {
+	if ((column >= 0) && (column < NUM_COLUMNS)) {
 		return (HAL_GPIO_ReadPin(((GPIO_TypeDef *)col_port[column]), col_pin[column]) == GPIO_PIN_SET);
 	} else {
 		return 0;
@@ -452,7 +456,7 @@ void process_key(short key_position, short is_pressed) {
 			// Otherwise, cancel any repeating character
 			key_repeat_delay = 0;
 			key_init_delay = 0;
-			last_pressed = 0;
+			last_pressed = NO_KEY;
 			// HAL_TIM_Base_Stop_IT(&htim16);
 		}
 
@@ -464,11 +468,14 @@ void process_key(short key_position, short is_pressed) {
 			send_key(key_position, is_pressed);
 		}
 
-		// Cancel any repeating character
-		key_repeat_delay = 0;
-		key_init_delay = 0;
-		last_pressed = 0;
-		// HAL_TIM_Base_Stop_IT(&htim16);
+		// Only the most recently pressed key repeats, so releasing any other key
+		// must not stop it. Cancel the repeat only if this was the repeating key.
+		if (key_position == last_pressed) {
+			key_repeat_delay = 0;
+			key_init_delay = 0;
+			last_pressed = NO_KEY;
+			// HAL_TIM_Base_Stop_IT(&htim16);
+		}
 	}
 }
 
@@ -552,7 +559,7 @@ void kbd_process() {
 
 		// Next... check to see if we need to repeat the last key pressed
 		if (send_repeat) {
-			if (last_pressed != 0) {
+			if (last_pressed != NO_KEY) {
 				// Send the key and reset the timers for another repeat
 				send_key(last_pressed, 1);
 				key_repeat_delay = millis() + delay_repeat;
@@ -594,7 +601,7 @@ void kbd_init() {
 
 	is_transmitting = 0;		// We're not transmitting anything yet
 
-	last_pressed = 0;			// There isn't a currently held key
+	last_pressed = NO_KEY;		// There isn't a currently held key
 	key_init_delay = 0;			// We're not waiting for the initial delay
 	key_repeat_delay = 0;		// We're not repeating
 	send_repeat = 0;			// We don't need to send a repeat
