@@ -584,7 +584,7 @@ int ps2_keyboard_reply(uint8_t cmd, uint8_t * leds_) {
 			//ack();
 			ps2_write_wait(0xFA);
 			if(!ps2_read_param(&leds)) {
-				ps2_write(0xFA);
+				ps2_ack();
 			}
 #ifdef _PS2DBG
 			_PS2DBG.print("LEDs: ");
